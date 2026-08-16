@@ -181,6 +181,11 @@ Drop photos in there. That is the whole workflow.
 - Works with: jpg, jpeg, png, gif, webp, heic, heif, avif, bmp, tif, tiff.
 - Videos are ignored.
 
+**The corner label** shows which folder each photo came from. Photos sitting
+loose in the main folder show nothing, since they are not in a folder. Change
+`CORNER_SHOWS` to `"clock"` to get the time and date back instead, or
+`"folder+clock"` for both.
+
 **Photo shape:** the iPad's screen is 4:3. Photos are scaled to fit without ever
 being cropped, so a wide photo gets black bars above and below. That is
 deliberate - nothing gets its heads cut off.
@@ -198,11 +203,11 @@ GitHub, then reload the page on the iPad.
 | `SECONDS_PER_PHOTO` | How long each photo stays up | `12` |
 | `SHUFFLE` | `true` = random order, `false` = newest first | `true` |
 | `FADE_SECONDS` | Length of the cross-fade. `0` = instant | `1.5` |
-| `SHOW_CLOCK` | Clock in the corner on or off | `true` |
-| `SHOW_DATE` | Date line under the clock | `true` |
+| `CORNER_SHOWS` | What the corner label shows: `"folder"`, `"clock"`, `"folder+clock"`, `"filename"`, `"none"` | `"folder"` |
+| `CORNER_POSITION` | `"top-left"`, `"top-right"`, `"bottom-left"`, `"bottom-right"` | `"bottom-right"` |
+| `SHOW_DATE` | Date line under the time. Clock modes only | `true` |
 | `CLOCK_24_HOUR` | `true` = 14:30, `false` = 2:30 PM | `false` |
-| `CLOCK_CORNER` | `"top-left"`, `"top-right"`, `"bottom-left"`, `"bottom-right"` | `"bottom-right"` |
-| `SHOW_FILE_NAME` | Photo's file name in the opposite corner | `false` |
+| `NO_FOLDER_LABEL` | Label for photos not inside any sub-folder | `""` |
 | `KEEP_SCREEN_AWAKE` | Ask iPadOS to keep the screen on | `true` |
 | `CHECK_FOR_NEW_PHOTOS_MINUTES` | How often to look for new photos | `10` |
 | `USE_SMALLER_PHOTOS` | Download 2048-pixel copies instead of full-size originals. Looks identical on an iPad, uses far less data | `true` |

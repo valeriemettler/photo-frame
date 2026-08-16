@@ -52,7 +52,7 @@
   }
   .photo-layer.visible { opacity: 1; }
 
-  /* Clock / date overlay */
+  /* The corner label - folder name, clock, or file name. See CORNER_SHOWS. */
   #clock {
     position: absolute;
     z-index: 20;
@@ -64,7 +64,7 @@
     text-shadow: 0 1px 6px rgba(0, 0, 0, 0.8);
     line-height: 1.15;
     pointer-events: none;             /* taps pass through it */
-    display: none;                    /* turned on by SHOW_CLOCK */
+    display: none;                    /* switched on by updateCornerLabel() */
   }
   #clock .time { font-size: 34px; font-weight: 300; letter-spacing: 0.5px; }
   #clock .date { font-size: 15px; font-weight: 400; opacity: 0.75; margin-top: 2px; }
@@ -309,23 +309,28 @@ const SHUFFLE = true;
 const FADE_SECONDS = 1.5;
 
 
-/* --- Clock and date overlay -------------------------------------------- */
+/* --- The little label in the corner ------------------------------------- */
 
-// false = no clock at all
-const SHOW_CLOCK = true;
+// What the corner label shows. One of:
+//   "folder"       the name of the folder the photo is in
+//   "clock"        the time, and the date underneath
+//   "folder+clock" the folder name, with the time underneath
+//   "filename"     the photo's file name
+//   "none"         nothing at all
+const CORNER_SHOWS = "folder";
 
-// false = time only, no date line
-const SHOW_DATE = true;
-
-// true  = 14:30      false = 2:30 PM
-const CLOCK_24_HOUR = false;
-
-// Where the clock sits. One of:
+// Which corner it sits in. One of:
 //   "top-left"  "top-right"  "bottom-left"  "bottom-right"
-const CLOCK_CORNER = "bottom-right";
+const CORNER_POSITION = "bottom-right";
 
-// true = also show the photo's file name in the opposite corner
-const SHOW_FILE_NAME = false;
+// Only used when the corner shows a clock.
+const SHOW_DATE = true;        // false = time only, no date line
+const CLOCK_24_HOUR = false;   // true = 14:30, false = 2:30 PM
+
+// Photos sitting loose in the main folder are not in any sub-folder, so there
+// is no name to show. This is what they get labelled instead. Leave it as ""
+// to show nothing for those.
+const NO_FOLDER_LABEL = "";
 
 
 /* --- Screen ------------------------------------------------------------- */
@@ -690,6 +695,9 @@ function collectPhotos(entries, into) {
       id: e.id,
       name: e.name,
       path: e.path_lower,
+      // path_lower is forced to lowercase by Dropbox, so folder names would
+      // read "iceland 2025". path_display keeps the real capitalisation.
+      display: e.path_display || e.path_lower,
       when: e.client_modified || e.server_modified || ""
     });
   });
@@ -717,6 +725,7 @@ async function dropboxCheckForChanges() {
         id: e.id,
         name: e.name,
         path: e.path_lower,
+        display: e.path_display || e.path_lower,
         when: e.client_modified || e.server_modified || ""
       });
       changed = true;
@@ -926,7 +935,7 @@ async function showPhotoAt(step) {
   outgoing.classList.remove("visible");
   usingLayerA = !usingLayerA;
 
-  if (SHOW_FILE_NAME) $("caption").textContent = photo.name;
+  updateCornerLabel();
 
   // Warm up the next photo in the background so the next fade is instant.
   const nextPos = order[(orderIndex + 1) % order.length];
@@ -956,39 +965,92 @@ function togglePause() {
    Clock
    -------------------------------------------------------------------------- */
 
-function setUpClock() {
-  const clock = $("clock");
-  const caption = $("caption");
+// Work out which folder a photo lives in, ready to show on screen.
+// "/Iceland 2025/img_0042.heic"  ->  "Iceland 2025"
+// "/img_0042.heic"               ->  NO_FOLDER_LABEL (it is not in a folder)
+function folderLabelFor(photo) {
+  if (!photo || photo.kind !== "dropbox") return "";
 
-  clock.className = "corner-" + CLOCK_CORNER;
-  // Put the file name in the corner diagonally opposite the clock.
-  const OPPOSITE = {
-    "top-left":     "bottom-right",
-    "top-right":    "bottom-left",
-    "bottom-left":  "top-right",
-    "bottom-right": "top-left"
-  };
-  caption.className = "corner-" + (OPPOSITE[CLOCK_CORNER] || "top-left");
+  let path = photo.display || photo.path || "";
 
-  if (SHOW_CLOCK)    clock.style.display = "block";
-  if (SHOW_FILE_NAME) caption.style.display = "block";
-  if (!SHOW_DATE)    clock.querySelector(".date").style.display = "none";
-
-  if (!SHOW_CLOCK && !SHOW_FILE_NAME) return;
-
-  function tick() {
-    if (SHOW_CLOCK) {
-      const now = new Date();
-      clock.querySelector(".time").textContent =
-        now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: !CLOCK_24_HOUR });
-      if (SHOW_DATE) {
-        clock.querySelector(".date").textContent =
-          now.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
-      }
-    }
-    setTimeout(tick, 1000 - (Date.now() % 1000) + 50);   // re-sync to the minute
+  // If the frame is pointed at a named folder rather than the app's own one,
+  // that folder is the container, not something worth labelling every photo
+  // with. Trim it off the front.
+  const base = folderPath();
+  if (base && path.toLowerCase().indexOf(base.toLowerCase()) === 0) {
+    path = path.slice(base.length);
   }
-  tick();
+
+  const parts = path.split("/").filter(function (s) { return s.length > 0; });
+  parts.pop();                                 // drop the file name itself
+  if (parts.length === 0) return NO_FOLDER_LABEL;
+  return parts[parts.length - 1];              // the folder it sits directly in
+}
+
+function currentPhoto() {
+  if (!order.length || orderIndex < 0) return null;
+  return photos[order[orderIndex]] || null;
+}
+
+function timeNow() {
+  return new Date().toLocaleTimeString([], {
+    hour: "numeric", minute: "2-digit", hour12: !CLOCK_24_HOUR
+  });
+}
+function dateNow() {
+  return new Date().toLocaleDateString([], {
+    weekday: "long", month: "long", day: "numeric"
+  });
+}
+
+// Fill in the corner label. Called when the photo changes and once a second
+// so any clock stays honest.
+function updateCornerLabel() {
+  const box = $("clock");
+  if (CORNER_SHOWS === "none") { box.style.display = "none"; return; }
+
+  const photo = currentPhoto();
+  let top = "", bottom = "";
+
+  if (CORNER_SHOWS === "clock") {
+    top = timeNow();
+    bottom = SHOW_DATE ? dateNow() : "";
+  } else if (CORNER_SHOWS === "folder") {
+    top = folderLabelFor(photo);
+  } else if (CORNER_SHOWS === "folder+clock") {
+    top = folderLabelFor(photo);
+    bottom = timeNow();
+  } else if (CORNER_SHOWS === "filename") {
+    top = photo ? photo.name.replace(/\.[^.]+$/, "") : "";
+  }
+
+  // Nothing worth saying (a photo not in any folder, say) - hide it entirely
+  // rather than leave an empty grey box floating over the picture.
+  if (!top && !bottom) { box.style.display = "none"; return; }
+
+  box.style.display = "block";
+  box.querySelector(".time").textContent = top;
+  const dateEl = box.querySelector(".date");
+  dateEl.textContent = bottom;
+  dateEl.style.display = bottom ? "block" : "none";
+
+  // A folder name reads better a bit smaller than a clock does.
+  box.querySelector(".time").style.fontSize =
+    (CORNER_SHOWS === "clock") ? "34px" : "24px";
+}
+
+function setUpCornerLabel() {
+  const box = $("clock");
+  box.className = "corner-" + CORNER_POSITION;
+  $("caption").style.display = "none";     // superseded by the corner label
+  updateCornerLabel();
+
+  // Only bother ticking if there is actually a clock up there.
+  if (CORNER_SHOWS !== "clock" && CORNER_SHOWS !== "folder+clock") return;
+  (function tick() {
+    updateCornerLabel();
+    setTimeout(tick, 1000 - (Date.now() % 1000) + 50);   // re-sync to the minute
+  })();
 }
 
 
@@ -1274,7 +1336,7 @@ function handleRedirectCode() {
 // Go.
 window.addEventListener("load", function () {
   applyFadeSetting();
-  setUpClock();
+  setUpCornerLabel();
   wireUpTaps();
   keepAwake();
   showDiagnostics();
