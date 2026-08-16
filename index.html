@@ -247,6 +247,16 @@
         <button id="btnConnect" class="primary">Connect to Dropbox</button>
         <button id="btnDisconnect">Disconnect</button>
       </div>
+
+      <!-- Shown after tapping Connect. Safari often blocks the automatic
+           pop-up, so this gives a link that always works. -->
+      <div id="authLinkBox" style="display:none">
+        <a id="authLink" class="btn" href="#" target="_blank" rel="noopener"
+           style="display:block; text-align:center; text-decoration:none; background:#2f7de1; border-color:#2f7de1; margin-bottom:12px">
+          Tap here to open Dropbox &rarr;
+        </a>
+        <p class="help">If Dropbox did not open by itself, tap the blue link above. Approve it, copy the code Dropbox shows you, then come back and paste it below.</p>
+      </div>
       <input id="inpCode" type="text" placeholder="paste the code from Dropbox here" autocapitalize="off" autocorrect="off" spellcheck="false">
       <div class="row"><button id="btnFinish" class="primary">Finish connecting</button></div>
 
@@ -489,11 +499,15 @@ async function dropboxStartConnect() {
     + "&code_challenge=" + encodeURIComponent(challenge)
     + "&code_challenge_method=S256";
 
-  setSetupStatus("Dropbox is opening. Approve it, copy the code it shows you, then come back here and paste it in box below.", "");
-  // In a Home Screen app, window.open is sometimes blocked. If it is, just
-  // navigate there instead; iPadOS opens it in Safari and leaves the frame be.
-  const opened = window.open(url, "_blank");
-  if (!opened) window.location.href = url;
+  // Always show the tappable link first. Safari blocks pop-ups often enough
+  // that relying on window.open alone is how this step silently fails.
+  $("authLink").href = url;
+  $("authLinkBox").style.display = "block";
+  setSetupStatus("Now tap the blue “Tap here to open Dropbox” link just below. Approve it, copy the code Dropbox shows you, then come back and paste it in.", "");
+
+  // Try to open it automatically too. If Safari blocks this, the link above
+  // still works, so nothing is lost.
+  try { window.open(url, "_blank"); } catch (e) { /* the link covers us */ }
 }
 
 // Step 2 of signing in: swap the pasted code for tokens.
