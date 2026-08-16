@@ -198,6 +198,30 @@
   #setup .status.good { background: rgba(50, 190, 110, 0.16); }
   #setup .status.bad  { background: rgba(240, 90, 80, 0.16); }
   #setup hr { border: 0; border-top: 1px solid rgba(255,255,255,0.12); margin: 30px 0; }
+
+  /* Tappable choices for the folder and order pickers. Deliberately large -
+     these get poked with a fingertip, not a mouse pointer. */
+  .pills { display: flex; flex-wrap: wrap; gap: 9px; margin-bottom: 6px; }
+  .pill {
+    -webkit-appearance: none;
+    appearance: none;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #fff;
+    font-family: inherit;
+    font-size: 16px;
+    padding: 12px 18px;
+    border-radius: 999px;
+    cursor: pointer;
+    line-height: 1.2;
+  }
+  .pill.on {
+    background: #2f7de1;
+    border-color: #2f7de1;
+    font-weight: 600;
+  }
+  .pill .count { opacity: 0.65; font-size: 13px; margin-left: 6px; }
+  .pill.on .count { opacity: 0.85; }
 </style>
 </head>
 
@@ -236,6 +260,21 @@
       <p class="sub">You only need to do this once. Everything you type here is saved on this iPad only.</p>
 
       <div class="status" id="dbxStatus">Checking&hellip;</div>
+
+      <!-- The everyday controls go first. The Dropbox setup below them is a
+           one-time thing you will rarely look at again. -->
+      <h3>Photos from</h3>
+      <div id="folderPicker" class="pills"></div>
+
+      <h3>Order</h3>
+      <div id="orderPicker" class="pills"></div>
+
+      <div class="row" style="margin-top:18px">
+        <button id="btnApply" class="primary">Show these photos</button>
+      </div>
+
+      <hr>
+      <p class="help">Everything below here is the one-time Dropbox setup. Once it says connected, you can ignore it.</p>
 
       <h3>1. Dropbox App key</h3>
       <p class="help">From dropbox.com/developers/apps &rarr; your app &rarr; Settings tab &rarr; "App key". It is safe to paste here.</p>
@@ -865,16 +904,57 @@ let paused = false;
 let usingLayerA = true;
 let consecutiveFailures = 0;
 
+// Which folder is being shown. "" means all of them, mixed together.
+function selectedFolder() {
+  return store.selectedFolder || "";
+}
+
+// "shuffle" | "newest" | "oldest". Falls back to whatever SHUFFLE says in the
+// settings block, so the file still controls the default.
+function photoOrderMode() {
+  return store.orderMode || (SHUFFLE ? "shuffle" : "newest");
+}
+
+// Every folder that actually has photos in it, with a count for each.
+// Worked out from the photos already loaded, so it costs nothing extra.
+function availableFolders() {
+  const counts = {};
+  photos.forEach(function (p) {
+    const f = folderLabelFor(p);
+    if (!f) return;                       // loose in the main folder
+    counts[f] = (counts[f] || 0) + 1;
+  });
+  return Object.keys(counts).sort(function (a, b) {
+    return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+  }).map(function (name) {
+    return { name: name, count: counts[name] };
+  });
+}
+
 function buildOrder() {
-  order = photos.map(function (_, i) { return i; });
-  if (SHUFFLE) {
+  const want = selectedFolder();
+
+  order = [];
+  photos.forEach(function (p, i) {
+    if (!want || folderLabelFor(p) === want) order.push(i);
+  });
+
+  // The chosen folder may have been renamed or emptied since. Rather than show
+  // a blank frame, fall back to everything.
+  if (order.length === 0) {
+    order = photos.map(function (_, i) { return i; });
+  }
+
+  const mode = photoOrderMode();
+  if (mode === "shuffle") {
     // Fisher-Yates shuffle - a proper, evenly-random shuffle.
     for (let i = order.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       const t = order[i]; order[i] = order[j]; order[j] = t;
     }
+  } else if (mode === "oldest") {
+    order.sort(function (a, b) { return String(photos[a].when).localeCompare(String(photos[b].when)); });
   } else {
-    // Newest first.
     order.sort(function (a, b) { return String(photos[b].when).localeCompare(String(photos[a].when)); });
   }
   orderIndex = -1;
@@ -1127,11 +1207,77 @@ function refreshSetupStatus() {
   }
 }
 
+// Build one row of tappable choices.
+//   options: [{ value, label, count }]
+//   current: the value that should look selected
+//   onPick:  called with the chosen value
+function renderPills(container, options, current, onPick) {
+  container.innerHTML = "";
+  options.forEach(function (opt) {
+    const b = document.createElement("button");
+    b.className = "pill" + (opt.value === current ? " on" : "");
+    b.textContent = opt.label;
+    if (opt.count !== undefined) {
+      const c = document.createElement("span");
+      c.className = "count";
+      c.textContent = opt.count;
+      b.appendChild(c);
+    }
+    b.onclick = function () { onPick(opt.value); };
+    container.appendChild(b);
+  });
+}
+
+function renderPickers() {
+  const folders = availableFolders();
+
+  const folderOptions = [{ value: "", label: "All folders" }];
+  folders.forEach(function (f) {
+    folderOptions.push({ value: f.name, label: f.name, count: f.count });
+  });
+
+  // Only worth showing if there is actually a choice to make.
+  const folderSection = $("folderPicker");
+  if (folders.length === 0) {
+    folderSection.innerHTML =
+      '<p class="help" style="margin:0">All your photos are loose in the main folder, '
+      + 'so there is nothing to choose between yet. Put them into folders in Dropbox '
+      + 'and those folders will appear here.</p>';
+  } else {
+    renderPills(folderSection, folderOptions, selectedFolder(), function (value) {
+      store.selectedFolder = value;
+      saveStore(store);
+      renderPickers();
+    });
+  }
+
+  renderPills($("orderPicker"), [
+    { value: "shuffle", label: "Shuffle" },
+    { value: "newest",  label: "Newest first" },
+    { value: "oldest",  label: "Oldest first" }
+  ], photoOrderMode(), function (value) {
+    store.orderMode = value;
+    saveStore(store);
+    renderPickers();
+  });
+}
+
+// Apply the folder and order choices without touching anything else.
+function applyPickersAndPlay() {
+  closeSetup();
+  buildOrder();
+  clearTimeout(timer);
+  paused = false;
+  hideMessage();
+  showPhotoAt(1);
+}
+
 function openSetup() {
   clearTimeout(timer);
   $("inpAppKey").value = appKey();
   $("inpFolder").value = store.folder !== undefined ? store.folder : DROPBOX_FOLDER_PATH;
   $("inpUrls").value   = store.urls || "";
+  renderPickers();
   refreshSetupStatus();
   $("setup").classList.add("showing");
   hideControls();
@@ -1187,6 +1333,7 @@ function wireUpTaps() {
   $("btnNext").onclick   = function () { goNext(); showControls(); };
   $("btnPause").onclick  = function () { togglePause(); showControls(); };
   $("btnSetup").onclick  = openSetup;
+  $("btnApply").onclick  = applyPickersAndPlay;
   $("msgButton").onclick = openSetup;
 
   $("btnConnect").onclick    = dropboxStartConnect;

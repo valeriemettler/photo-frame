@@ -181,6 +181,21 @@ Drop photos in there. That is the whole workflow.
 - Works with: jpg, jpeg, png, gif, webp, heic, heif, avif, bmp, tif, tiff.
 - Videos are ignored.
 
+### Choosing a folder and an order, from the iPad
+
+Tap the screen, tap **Setup**, and the first two things are:
+
+- **Photos from** - every folder inside your Dropbox folder, plus **All
+  folders** to mix them together. The number on each is how many photos it has.
+- **Order** - Shuffle, Newest first, or Oldest first.
+
+Tap what you want, then **Show these photos**. The choice is remembered on that
+iPad, so different iPads can show different folders.
+
+Folders only appear here once they have photos in them. Photos sitting loose in
+the main folder are still shown under "All folders" - they just have no folder
+name to list.
+
 **The corner label** shows which folder each photo came from. Photos sitting
 loose in the main folder show nothing, since they are not in a folder. Change
 `CORNER_SHOWS` to `"clock"` to get the time and date back instead, or
