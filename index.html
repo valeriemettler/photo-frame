@@ -539,8 +539,21 @@ async function dropboxFinishConnect(code) {
   }
 
   if (!res.ok || !data.access_token) {
+    const raw = String(data.error_description || data.error || res.status);
+    // Dropbox's own errors arrive with a huge stack trace attached. Keep the
+    // first useful sentence and bin the rest.
+    const short = raw.split("ORIGINAL STACK TRACE")[0].slice(0, 220);
+
+    // Dropbox rate-limits the folder-creation step. Retrying immediately makes
+    // it worse, so say so plainly rather than blaming the code.
+    if (/rate limit|ResourceExhausted|too_many_requests|Concurrency limit/i.test(raw)) {
+      setSetupStatus("Dropbox is busy and is asking us to wait - this is on their side, not yours. "
+        + "Leave it alone for about 15 minutes, then tap Connect and try once more. "
+        + "Trying again straight away makes the wait longer. (" + short + ")", "bad");
+      return;
+    }
     setSetupStatus("Dropbox refused that code. Codes can only be used once - tap Connect again to get a fresh one. ("
-      + (data.error_description || data.error || res.status) + ")", "bad");
+      + short + ")", "bad");
     return;
   }
 
