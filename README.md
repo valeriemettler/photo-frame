@@ -206,6 +206,15 @@ python3 ~/projects/photo-locations/build_locations_csv.py ~/Documents/YourFolder
 Then upload the resulting `.csv` into the Dropbox folder alongside the photos.
 Choose what the corner shows under **Label in the corner** in Setup.
 
+### Showing only videos
+
+Setup has a **Show** row: Everything, Photos only, or Videos only. Each carries
+a count for whatever folder you have selected, so you can see there are eight
+clips before choosing to watch only those.
+
+Asking for videos in a folder that has none shows that folder's photos rather
+than an empty frame.
+
 ### How photos change
 
 Setup has a **How photos change** row. Tap one and the next photo uses it.

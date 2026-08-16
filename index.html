@@ -320,6 +320,9 @@
       <h3>Photos from</h3>
       <div id="folderPicker" class="pills"></div>
 
+      <h3>Show</h3>
+      <div id="mediaPicker" class="pills"></div>
+
       <h3>Order</h3>
       <div id="orderPicker" class="pills"></div>
 
@@ -1152,6 +1155,25 @@ function todayKey() {
   return d.getFullYear() + "-" + (d.getMonth() + 1) + "-" + d.getDate();
 }
 
+// "all" | "photos" | "videos"
+function mediaFilter() {
+  return store.mediaFilter || "all";
+}
+
+// How many stills and clips the current folder choice has to offer.
+function mediaCounts() {
+  const hidden = hiddenIds();
+  let want = selectedFolder();
+  if (want === DAILY_FOLDER) want = dailyFolder();
+  let stills = 0, clips = 0;
+  photos.forEach(function (p) {
+    if (hidden.indexOf(p.id) !== -1) return;
+    if (want && folderLabelFor(p) !== want) return;
+    if (isVideo(p)) clips++; else stills++;
+  });
+  return { photos: stills, videos: clips, all: stills + clips };
+}
+
 // "shuffle" | "newest" | "oldest". Falls back to whatever SHUFFLE says in the
 // settings block, so the file still controls the default.
 function photoOrderMode() {
@@ -1196,22 +1218,31 @@ function buildOrder() {
     setReviewingHidden(false);
   }
 
-  // useFolder "" means every folder. Hidden photos are left out either way.
-  function collect(useFolder) {
+  // useFolder "" means every folder, media "all" means stills and clips.
+  // Hidden photos are left out whatever else is asked for.
+  function collect(useFolder, media) {
     const out = [];
     photos.forEach(function (p, i) {
       if (hidden.indexOf(p.id) !== -1) return;
       if (useFolder && folderLabelFor(p) !== useFolder) return;
+      if (media === "videos" && !isVideo(p)) return;
+      if (media === "photos" && isVideo(p)) return;
       out.push(i);
     });
     return out;
   }
 
-  order = collect(want);
+  const media = mediaFilter();
+  order = collect(want, media);
 
   // The chosen folder may have been renamed or emptied since - widen to
-  // everything rather than show a blank frame.
-  if (order.length === 0 && want) order = collect("");
+  // every folder before giving up on what was asked for.
+  if (order.length === 0 && want) order = collect("", media);
+
+  // Still nothing? Then there are no clips (or no stills) anywhere, so honour
+  // the folder rather than the media filter - a frame showing the wrong thing
+  // beats a frame showing nothing.
+  if (order.length === 0 && media !== "all") order = collect(want, "all");
 
   // And if literally everything has been hidden, show it all again rather
   // than leave nothing at all.
@@ -1701,10 +1732,14 @@ function placeSubLabelFor(photo) {
   else if (p.hood && p.hood !== top) bits.push(p.hood);
   if (p.country && p.country !== top) bits.push(p.country);
 
+  // Midday, not midnight - a date parsed at midnight can slip to the previous
+  // day once the iPad's timezone is applied, and print the wrong date.
   let when = "";
   if (p.date) {
     const d = new Date(p.date + "T12:00:00");
-    if (!isNaN(d)) when = d.toLocaleDateString([], { month: "long", year: "numeric" });
+    if (!isNaN(d)) {
+      when = d.toLocaleDateString([], { day: "numeric", month: "long", year: "numeric" });
+    }
   }
   if (when) bits.push(when);
   return bits.join(" · ");
@@ -2007,9 +2042,22 @@ function renderPickers() {
     renderPills(folderSection, folderOptions, selectedFolder(), function (value) {
       store.selectedFolder = value;
       saveStore(store);
-      renderPickers();
+      renderPickers();          // redraws the media counts for the new folder
     });
   }
+
+  // Stills, clips, or both - with counts, so an empty choice is visible
+  // before it is made rather than after.
+  const counts = mediaCounts();
+  renderPills($("mediaPicker"), [
+    { value: "all",    label: "Everything", count: counts.all },
+    { value: "photos", label: "Photos only", count: counts.photos },
+    { value: "videos", label: "Videos only", count: counts.videos }
+  ], mediaFilter(), function (value) {
+    store.mediaFilter = value;
+    saveStore(store);
+    renderPickers();
+  });
 
   renderPills($("orderPicker"), [
     { value: "shuffle", label: "Shuffle" },
