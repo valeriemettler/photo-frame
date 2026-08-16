@@ -1,0 +1,1257 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+
+<!-- Fill the whole screen on iPad, including under the rounded corners. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+
+<!-- These three lines are what make "Add to Home Screen" open fullscreen,
+     with no Safari address bar. -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Photo Frame">
+
+<meta name="theme-color" content="#000000">
+<title>Photo Frame</title>
+
+<style>
+  /* ---------------------------------------------------------------
+     LOOK AND FEEL
+     Black background, no scrolling, nothing selectable or draggable.
+     --------------------------------------------------------------- */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    background: #000;
+    overflow: hidden;                 /* no scrolling, ever */
+    position: fixed;                  /* stops iOS rubber-band bounce */
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;      /* no "save image" popup on long press */
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;       /* no double-tap zoom */
+    font-family: -apple-system, "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    color: #fff;
+  }
+
+  /* The two photo layers sit on top of each other and cross-fade.
+     One is visible while the next one quietly loads underneath. */
+  .photo-layer {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;              /* scale to fit, never crop */
+    opacity: 0;
+    transition: opacity 1.5s ease-in-out;  /* overwritten by FADE_SECONDS */
+    will-change: opacity;
+  }
+  .photo-layer.visible { opacity: 1; }
+
+  /* Clock / date overlay */
+  #clock {
+    position: absolute;
+    z-index: 20;
+    padding: 10px 16px;
+    border-radius: 14px;
+    background: rgba(0, 0, 0, 0.35);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    text-shadow: 0 1px 6px rgba(0, 0, 0, 0.8);
+    line-height: 1.15;
+    pointer-events: none;             /* taps pass through it */
+    display: none;                    /* turned on by SHOW_CLOCK */
+  }
+  #clock .time { font-size: 34px; font-weight: 300; letter-spacing: 0.5px; }
+  #clock .date { font-size: 15px; font-weight: 400; opacity: 0.75; margin-top: 2px; }
+
+  /* File-name caption, sits in the opposite corner from the clock */
+  #caption {
+    position: absolute;
+    z-index: 20;
+    padding: 6px 12px;
+    border-radius: 10px;
+    background: rgba(0, 0, 0, 0.35);
+    font-size: 13px;
+    opacity: 0.6;
+    pointer-events: none;
+    display: none;
+    max-width: 45vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Corner positions. env(safe-area-inset-*) keeps things clear of the
+     rounded screen corners and the home indicator. */
+  .corner-top-left     { top:    calc(env(safe-area-inset-top)    + 18px); left:  calc(env(safe-area-inset-left)  + 22px); }
+  .corner-top-right    { top:    calc(env(safe-area-inset-top)    + 18px); right: calc(env(safe-area-inset-right) + 22px); text-align: right; }
+  .corner-bottom-left  { bottom: calc(env(safe-area-inset-bottom) + 18px); left:  calc(env(safe-area-inset-left)  + 22px); }
+  .corner-bottom-right { bottom: calc(env(safe-area-inset-bottom) + 18px); right: calc(env(safe-area-inset-right) + 22px); text-align: right; }
+
+  /* Big readable message shown instead of a blank screen when
+     something goes wrong (no photos, no internet, etc.) */
+  #message {
+    position: absolute;
+    inset: 0;
+    z-index: 30;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 40px;
+    background: #000;
+  }
+  #message.showing { display: flex; }
+  #message h1 { font-size: 30px; font-weight: 600; margin-bottom: 18px; }
+  #message p  { font-size: 19px; line-height: 1.6; opacity: 0.85; max-width: 620px; margin-bottom: 10px; }
+  #message .detail {
+    font-size: 14px;
+    opacity: 0.5;
+    margin-top: 22px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    max-width: 620px;
+    word-break: break-word;
+  }
+  #message button { margin-top: 28px; }
+
+  /* Shared button style */
+  button, .btn {
+    -webkit-appearance: none;
+    appearance: none;
+    background: rgba(255, 255, 255, 0.14);
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    color: #fff;
+    font-size: 17px;
+    font-family: inherit;
+    padding: 12px 22px;
+    border-radius: 12px;
+    cursor: pointer;
+  }
+  button:active { background: rgba(255, 255, 255, 0.28); }
+  button.primary { background: #2f7de1; border-color: #2f7de1; }
+
+  /* The little control bar that appears when you tap the screen */
+  #controls {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: calc(env(safe-area-inset-bottom) + 34px);
+    z-index: 25;
+    display: flex;
+    gap: 10px;
+    padding: 10px;
+    border-radius: 18px;
+    background: rgba(20, 20, 20, 0.72);
+    -webkit-backdrop-filter: blur(14px);
+    backdrop-filter: blur(14px);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+  }
+  #controls.showing { opacity: 1; pointer-events: auto; }
+  #controls button { font-size: 16px; padding: 11px 18px; }
+
+  /* Setup screen (Dropbox connection, folder, pasted links) */
+  #setup {
+    position: absolute;
+    inset: 0;
+    z-index: 40;
+    display: none;
+    background: #111;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: calc(env(safe-area-inset-top) + 34px) 30px calc(env(safe-area-inset-bottom) + 40px);
+  }
+  #setup.showing { display: block; }
+  #setup .wrap { max-width: 640px; margin: 0 auto; }
+  #setup h2 { font-size: 26px; margin-bottom: 6px; }
+  #setup .sub { font-size: 15px; opacity: 0.6; margin-bottom: 26px; line-height: 1.5; }
+  #setup h3 { font-size: 17px; margin: 26px 0 8px; }
+  #setup p.help { font-size: 14px; opacity: 0.65; line-height: 1.55; margin-bottom: 10px; }
+  #setup input, #setup textarea {
+    width: 100%;
+    font-size: 16px;                  /* 16px stops iOS from zooming in */
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    padding: 13px 14px;
+    border-radius: 11px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.07);
+    color: #fff;
+    margin-bottom: 12px;
+  }
+  #setup textarea { height: 130px; resize: vertical; line-height: 1.5; }
+  #setup .row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+  #setup .status {
+    font-size: 15px;
+    padding: 13px 15px;
+    border-radius: 11px;
+    background: rgba(255, 255, 255, 0.07);
+    margin-bottom: 18px;
+    line-height: 1.5;
+  }
+  #setup .status.good { background: rgba(50, 190, 110, 0.16); }
+  #setup .status.bad  { background: rgba(240, 90, 80, 0.16); }
+  #setup hr { border: 0; border-top: 1px solid rgba(255,255,255,0.12); margin: 30px 0; }
+</style>
+</head>
+
+<body>
+
+  <!-- The two cross-fading photo layers -->
+  <img id="layerA" class="photo-layer" alt="">
+  <img id="layerB" class="photo-layer" alt="">
+
+  <!-- Clock / date -->
+  <div id="clock"><div class="time"></div><div class="date"></div></div>
+
+  <!-- Optional file-name caption -->
+  <div id="caption"></div>
+
+  <!-- Full-screen message (errors, loading, empty folder) -->
+  <div id="message">
+    <h1 id="msgTitle"></h1>
+    <div id="msgBody"></div>
+    <div class="detail" id="msgDetail"></div>
+    <button id="msgButton" class="primary" style="display:none">Open Setup</button>
+  </div>
+
+  <!-- Tap-anywhere control bar -->
+  <div id="controls">
+    <button id="btnPrev">&#9664;&nbsp; Back</button>
+    <button id="btnPause">&#10074;&#10074;&nbsp; Pause</button>
+    <button id="btnNext">Next &nbsp;&#9654;</button>
+    <button id="btnSetup">Setup</button>
+  </div>
+
+  <!-- Setup screen -->
+  <div id="setup">
+    <div class="wrap">
+      <h2>Photo Frame Setup</h2>
+      <p class="sub">You only need to do this once. Everything you type here is saved on this iPad only.</p>
+
+      <div class="status" id="dbxStatus">Checking&hellip;</div>
+
+      <h3>1. Dropbox App key</h3>
+      <p class="help">From dropbox.com/developers/apps &rarr; your app &rarr; Settings tab &rarr; "App key". It is safe to paste here.</p>
+      <input id="inpAppKey" type="text" placeholder="paste your App key" autocapitalize="off" autocorrect="off" spellcheck="false">
+
+      <h3>2. Connect</h3>
+      <p class="help">Tap Connect. Dropbox opens and shows you a code. Copy that code, come back here, paste it below, and tap Finish.</p>
+      <div class="row">
+        <button id="btnConnect" class="primary">Connect to Dropbox</button>
+        <button id="btnDisconnect">Disconnect</button>
+      </div>
+      <input id="inpCode" type="text" placeholder="paste the code from Dropbox here" autocapitalize="off" autocorrect="off" spellcheck="false">
+      <div class="row"><button id="btnFinish" class="primary">Finish connecting</button></div>
+
+      <h3>3. Which folder</h3>
+      <p class="help">Leave this empty to use the app's own folder (Dropbox &rarr; Apps &rarr; your app name). Or type a folder path such as <code>/Photo Frame</code>.</p>
+      <input id="inpFolder" type="text" placeholder="(empty = the app's own folder)" autocapitalize="off" autocorrect="off" spellcheck="false">
+
+      <hr>
+
+      <h3>Backup option: paste photo links</h3>
+      <p class="help">One web address per line. Used only if Dropbox is not connected. Dropbox share links get fixed up automatically.</p>
+      <textarea id="inpUrls" placeholder="https://&hellip;/photo1.jpg&#10;https://&hellip;/photo2.jpg" autocapitalize="off" autocorrect="off" spellcheck="false"></textarea>
+
+      <div class="row" style="margin-top:22px">
+        <button id="btnSave" class="primary">Save and start slideshow</button>
+        <button id="btnCancel">Cancel</button>
+      </div>
+      <p class="help" style="margin-top:26px" id="verInfo"></p>
+    </div>
+  </div>
+
+<script>
+"use strict";
+/* ==========================================================================
+   ==========================================================================
+
+     P H O T O   F R A M E   -   S E T T I N G S
+
+     Change the values below, save the file, then reload the page on the
+     iPad. Everything you can safely change is in this one block.
+
+   ==========================================================================
+   ========================================================================== */
+
+
+/* --- How the slideshow behaves ----------------------------------------- */
+
+// How many seconds each photo stays on screen.
+const SECONDS_PER_PHOTO = 12;
+
+// true  = random order (reshuffled each time it reaches the end)
+// false = ordered, newest photo first
+const SHUFFLE = true;
+
+// How long the cross-fade between two photos takes, in seconds.
+// 0 = instant switch. 1.5 is a gentle fade.
+const FADE_SECONDS = 1.5;
+
+
+/* --- Clock and date overlay -------------------------------------------- */
+
+// false = no clock at all
+const SHOW_CLOCK = true;
+
+// false = time only, no date line
+const SHOW_DATE = true;
+
+// true  = 14:30      false = 2:30 PM
+const CLOCK_24_HOUR = false;
+
+// Where the clock sits. One of:
+//   "top-left"  "top-right"  "bottom-left"  "bottom-right"
+const CLOCK_CORNER = "bottom-right";
+
+// true = also show the photo's file name in the opposite corner
+const SHOW_FILE_NAME = false;
+
+
+/* --- Screen ------------------------------------------------------------- */
+
+// true = ask iPadOS to keep the screen on while the slideshow runs.
+// You ALSO need: Settings > Display & Brightness > Auto-Lock > Never.
+const KEEP_SCREEN_AWAKE = true;
+
+
+/* --- Where the photos come from ----------------------------------------- */
+
+// "dropbox" = read a Dropbox folder (the main way - new photos appear by themselves)
+// "list"    = just use the PHOTO_URLS list further down (the simple backup way)
+const PHOTO_SOURCE = "dropbox";
+
+// Your Dropbox "App key". You can paste it here, OR leave it empty and type
+// it into the Setup screen on the iPad instead. Either is fine.
+// This key is not a password - it is designed to be public.
+const DROPBOX_APP_KEY = "";
+
+// Which Dropbox folder to show.
+//   ""              = the app's own folder (recommended - see the setup guide)
+//   "/Photo Frame"  = a folder named "Photo Frame" at the top of your Dropbox
+// Sub-folders are included automatically.
+const DROPBOX_FOLDER_PATH = "";
+
+// How often to check Dropbox for photos you have added since, in minutes.
+const CHECK_FOR_NEW_PHOTOS_MINUTES = 10;
+
+
+/* --- Backup option: a hand-written list of photo links ------------------
+   Only used when PHOTO_SOURCE is "list", or when Dropbox is not connected.
+   Paste one link per line, each in quotes, each ending with a comma.
+   Dropbox share links ending in "?dl=0" are corrected automatically.       */
+
+const PHOTO_URLS = [
+  // "https://www.dropbox.com/scl/fi/abc123/beach.jpg?rlkey=xyz&dl=0",
+  // "https://www.dropbox.com/scl/fi/def456/garden.jpg?rlkey=xyz&dl=0",
+];
+
+
+/* ==========================================================================
+   ==========================================================================
+
+     Below here is the machinery. You do not need to change any of it.
+
+   ==========================================================================
+   ========================================================================== */
+
+
+/* --------------------------------------------------------------------------
+   Small helpers
+   -------------------------------------------------------------------------- */
+
+const $ = function (id) { return document.getElementById(id); };
+
+// File types we treat as photos.
+const IMAGE_EXTENSIONS = ["jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "avif", "bmp", "tif", "tiff"];
+
+// Apple's HEIC files need converting before Safari will reliably show them
+// from Dropbox, so we ask Dropbox for a JPEG version of these.
+const NEEDS_CONVERSION = ["heic", "heif", "tif", "tiff", "bmp"];
+
+// Where we remember things on this iPad (survives restarts).
+const STORE_KEY = "photoframe.v1";
+
+function fileExtension(name) {
+  const dot = name.lastIndexOf(".");
+  return dot === -1 ? "" : name.slice(dot + 1).toLowerCase();
+}
+
+// Read/write the saved settings blob.
+function loadStore() {
+  try { return JSON.parse(localStorage.getItem(STORE_KEY) || "{}"); }
+  catch (e) { return {}; }
+}
+function saveStore(obj) {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(obj)); }
+  catch (e) { /* private browsing - nothing we can do */ }
+}
+let store = loadStore();
+
+// The App key can come from the file OR from the Setup screen.
+function appKey() { return (store.appKey || DROPBOX_APP_KEY || "").trim(); }
+function folderPath() {
+  const p = (store.folder !== undefined ? store.folder : DROPBOX_FOLDER_PATH) || "";
+  const t = p.trim();
+  if (t === "" || t === "/") return "";          // "" means the app's root folder
+  return t.startsWith("/") ? t : "/" + t;
+}
+
+
+/* --------------------------------------------------------------------------
+   The full-screen message (used instead of ever showing a blank black page)
+   -------------------------------------------------------------------------- */
+
+function showMessage(title, lines, detail, withSetupButton) {
+  $("msgTitle").textContent = title;
+  const body = $("msgBody");
+  body.innerHTML = "";
+  (lines || []).forEach(function (line) {
+    const p = document.createElement("p");
+    p.textContent = line;
+    body.appendChild(p);
+  });
+  $("msgDetail").textContent = detail || "";
+  $("msgButton").style.display = withSetupButton ? "" : "none";
+  $("message").classList.add("showing");
+}
+function hideMessage() { $("message").classList.remove("showing"); }
+
+
+/* --------------------------------------------------------------------------
+   DROPBOX - signing in
+
+   How this works, in plain language:
+   1. You create a free "app" in your own Dropbox account. It gives you an
+      "App key" (public, not a secret).
+   2. This page sends you to Dropbox to approve it. Dropbox shows a code.
+   3. You paste that code back here. We swap it for a long-lived permission
+      slip (a "refresh token") that is stored on this iPad only.
+   4. From then on the frame renews its own access automatically, so you
+      never have to sign in again.
+
+   The technical name for this is OAuth with PKCE. No password or secret
+   is ever stored in this file.
+   -------------------------------------------------------------------------- */
+
+const DBX_AUTH_URL  = "https://www.dropbox.com/oauth2/authorize";
+const DBX_TOKEN_URL = "https://api.dropboxapi.com/oauth2/token";
+const DBX_API       = "https://api.dropboxapi.com/2";
+const DBX_CONTENT   = "https://content.dropboxapi.com/2";
+
+// Turn raw bytes into the URL-safe base64 that the sign-in step needs.
+function base64url(bytes) {
+  let s = "";
+  for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function randomVerifier() {
+  const bytes = new Uint8Array(64);
+  crypto.getRandomValues(bytes);
+  return base64url(bytes).slice(0, 128);
+}
+
+async function challengeFor(verifier) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
+  return base64url(new Uint8Array(digest));
+}
+
+// Step 1 of signing in: send the user to Dropbox.
+async function dropboxStartConnect() {
+  const key = ($("inpAppKey").value || appKey()).trim();
+  if (!key) { setSetupStatus("Type your Dropbox App key first.", "bad"); return; }
+  if (!window.crypto || !crypto.subtle) {
+    setSetupStatus("This page must be opened over https:// (not as a file) for Dropbox sign-in to work. See the setup guide.", "bad");
+    return;
+  }
+
+  store.appKey = key;
+  const verifier = randomVerifier();
+  store.verifier = verifier;
+  saveStore(store);
+
+  const challenge = await challengeFor(verifier);
+  const url = DBX_AUTH_URL
+    + "?client_id=" + encodeURIComponent(key)
+    + "&response_type=code"
+    + "&token_access_type=offline"              // gives us the long-lived permission slip
+    + "&code_challenge=" + encodeURIComponent(challenge)
+    + "&code_challenge_method=S256";
+
+  setSetupStatus("Dropbox is opening. Approve it, copy the code it shows you, then come back here and paste it in box below.", "");
+  // In a Home Screen app, window.open is sometimes blocked. If it is, just
+  // navigate there instead; iPadOS opens it in Safari and leaves the frame be.
+  const opened = window.open(url, "_blank");
+  if (!opened) window.location.href = url;
+}
+
+// Step 2 of signing in: swap the pasted code for tokens.
+async function dropboxFinishConnect(code) {
+  const key = appKey();
+  const verifier = store.verifier;
+  if (!code)      { setSetupStatus("Paste the code from Dropbox first.", "bad"); return; }
+  if (!verifier)  { setSetupStatus("Tap “Connect to Dropbox” first, then paste the code.", "bad"); return; }
+
+  setSetupStatus("Connecting…", "");
+  const body = new URLSearchParams({
+    code: code.trim(),
+    grant_type: "authorization_code",
+    client_id: key,
+    code_verifier: verifier
+  });
+
+  let res, data;
+  try {
+    res = await fetch(DBX_TOKEN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: body
+    });
+    data = await res.json();
+  } catch (e) {
+    setSetupStatus("Could not reach Dropbox. Check the iPad's internet connection. (" + e.message + ")", "bad");
+    return;
+  }
+
+  if (!res.ok || !data.access_token) {
+    setSetupStatus("Dropbox refused that code. Codes can only be used once - tap Connect again to get a fresh one. ("
+      + (data.error_description || data.error || res.status) + ")", "bad");
+    return;
+  }
+
+  store.refreshToken = data.refresh_token || store.refreshToken || null;
+  store.accessToken  = data.access_token;
+  store.accessExpiry = Date.now() + ((data.expires_in || 14400) - 300) * 1000;
+  delete store.verifier;
+  delete store.cursor;
+  saveStore(store);
+
+  $("inpCode").value = "";
+  setSetupStatus(store.refreshToken
+    ? "Connected. This iPad will stay connected from now on."
+    : "Connected, but Dropbox did not send a renewal token, so this will need reconnecting in about 4 hours. Try disconnecting and connecting again.",
+    "good");
+}
+
+function dropboxDisconnect() {
+  delete store.refreshToken;
+  delete store.accessToken;
+  delete store.accessExpiry;
+  delete store.cursor;
+  delete store.verifier;
+  saveStore(store);
+  setSetupStatus("Disconnected.", "");
+}
+
+// Hand back a working access token, renewing it if it has expired.
+async function dropboxToken() {
+  if (store.accessToken && store.accessExpiry && Date.now() < store.accessExpiry) {
+    return store.accessToken;
+  }
+  if (!store.refreshToken) throw new Error("NOT_CONNECTED");
+
+  const body = new URLSearchParams({
+    grant_type: "refresh_token",
+    refresh_token: store.refreshToken,
+    client_id: appKey()
+  });
+  const res = await fetch(DBX_TOKEN_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: body
+  });
+  const data = await res.json().catch(function () { return {}; });
+  if (!res.ok || !data.access_token) {
+    delete store.refreshToken;                 // it is dead; force a reconnect
+    saveStore(store);
+    throw new Error("RECONNECT_NEEDED");
+  }
+  store.accessToken  = data.access_token;
+  store.accessExpiry = Date.now() + ((data.expires_in || 14400) - 300) * 1000;
+  saveStore(store);
+  return store.accessToken;
+}
+
+
+/* --------------------------------------------------------------------------
+   DROPBOX - reading the folder
+   -------------------------------------------------------------------------- */
+
+// A normal Dropbox API call.
+async function dbx(endpoint, payload) {
+  const token = await dropboxToken();
+  const res = await fetch(DBX_API + endpoint, {
+    method: "POST",
+    headers: {
+      "Authorization": "Bearer " + token,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(function () { return ""; });
+    const err = new Error("Dropbox " + res.status + ": " + text.slice(0, 300));
+    err.status = res.status;
+    err.raw = text;
+    throw err;
+  }
+  return res.json();
+}
+
+// Dropbox sends some arguments in an HTTP header, and headers can only hold
+// plain ASCII - so any accented or non-English characters get escaped.
+function asciiJson(obj) {
+  return JSON.stringify(obj).replace(/[\u007f-\uffff]/g, function (c) {
+    return "\\u" + ("0000" + c.charCodeAt(0).toString(16)).slice(-4);
+  });
+}
+
+// List every photo in the folder (and its sub-folders).
+async function dropboxListPhotos() {
+  const found = [];
+  let page = await dbx("/files/list_folder", {
+    path: folderPath(),
+    recursive: true,
+    include_deleted: false,
+    include_media_info: false,
+    include_mounted_folders: true,
+    limit: 2000
+  });
+
+  collectPhotos(page.entries, found);
+  while (page.has_more) {
+    page = await dbx("/files/list_folder/continue", { cursor: page.cursor });
+    collectPhotos(page.entries, found);
+  }
+
+  // Remember where we got to, so we can cheaply ask "anything new?" later.
+  store.cursor = page.cursor;
+  saveStore(store);
+  return found;
+}
+
+function collectPhotos(entries, into) {
+  entries.forEach(function (e) {
+    if (e[".tag"] !== "file") return;
+    if (IMAGE_EXTENSIONS.indexOf(fileExtension(e.name)) === -1) return;
+    into.push({
+      kind: "dropbox",
+      id: e.id,
+      name: e.name,
+      path: e.path_lower,
+      when: e.client_modified || e.server_modified || ""
+    });
+  });
+}
+
+// Cheap check for photos added or removed since the last look.
+// Returns true if anything actually changed.
+async function dropboxCheckForChanges() {
+  if (!store.cursor) return false;
+  let changed = false;
+  let page = await dbx("/files/list_folder/continue", { cursor: store.cursor });
+
+  for (;;) {
+    page.entries.forEach(function (e) {
+      if (e[".tag"] === "deleted") {
+        const i = photos.findIndex(function (p) { return p.path === e.path_lower; });
+        if (i !== -1) { photos.splice(i, 1); changed = true; }
+        return;
+      }
+      if (e[".tag"] !== "file") return;
+      if (IMAGE_EXTENSIONS.indexOf(fileExtension(e.name)) === -1) return;
+      if (photos.some(function (p) { return p.id === e.id; })) return;
+      photos.push({
+        kind: "dropbox",
+        id: e.id,
+        name: e.name,
+        path: e.path_lower,
+        when: e.client_modified || e.server_modified || ""
+      });
+      changed = true;
+    });
+    store.cursor = page.cursor;
+    if (!page.has_more) break;
+    page = await dbx("/files/list_folder/continue", { cursor: store.cursor });
+  }
+
+  saveStore(store);
+  return changed;
+}
+
+
+/* --------------------------------------------------------------------------
+   DROPBOX - turning a file into something an <img> tag can show
+
+   Two routes:
+   - normal JPEG/PNG etc: ask Dropbox for a temporary direct link (valid 4h)
+   - HEIC and friends:    ask Dropbox for a converted JPEG copy
+   Both results are cached so we do not ask twice.
+   -------------------------------------------------------------------------- */
+
+const linkCache = new Map();   // path -> { url, expires, blob (true/false) }
+const MAX_BLOBS = 24;          // keep memory sane on a frame left running for days
+
+function rememberLink(path, url, expires, isBlob) {
+  linkCache.set(path, { url: url, expires: expires, blob: !!isBlob });
+  if (!isBlob) return;
+  // Free the oldest converted images so memory does not creep up forever.
+  const blobs = [];
+  linkCache.forEach(function (v, k) { if (v.blob) blobs.push(k); });
+  while (blobs.length > MAX_BLOBS) {
+    const oldest = blobs.shift();
+    const entry = linkCache.get(oldest);
+    if (entry) { try { URL.revokeObjectURL(entry.url); } catch (e) {} linkCache.delete(oldest); }
+  }
+}
+
+async function urlForPhoto(photo) {
+  if (photo.kind === "url") return photo.url;
+
+  const cached = linkCache.get(photo.path);
+  if (cached && Date.now() < cached.expires) return cached.url;
+
+  if (NEEDS_CONVERSION.indexOf(fileExtension(photo.name)) !== -1) {
+    // Ask Dropbox to convert to a big JPEG we can display.
+    const token = await dropboxToken();
+    const res = await fetch(DBX_CONTENT + "/files/get_thumbnail_v2", {
+      method: "POST",
+      headers: {
+        "Authorization": "Bearer " + token,
+        "Dropbox-API-Arg": asciiJson({
+          resource: { ".tag": "path", path: photo.path },
+          format:   { ".tag": "jpeg" },
+          size:     { ".tag": "w2048h1536" },
+          mode:     { ".tag": "strict" }
+        })
+      }
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(function () { return ""; });
+      throw new Error("Dropbox thumbnail " + res.status + ": " + text.slice(0, 200));
+    }
+    const url = URL.createObjectURL(await res.blob());
+    rememberLink(photo.path, url, Date.now() + 3 * 60 * 60 * 1000, true);
+    return url;
+  }
+
+  const data = await dbx("/files/get_temporary_link", { path: photo.path });
+  rememberLink(photo.path, data.link, Date.now() + 3.5 * 60 * 60 * 1000, false);
+  return data.link;
+}
+
+
+/* --------------------------------------------------------------------------
+   The simple backup source: a plain list of links
+   -------------------------------------------------------------------------- */
+
+// A Dropbox share link ends in "?dl=0", which opens Dropbox's web page
+// rather than the picture itself. Swapping it for "raw=1" gives the picture.
+function fixShareLink(url) {
+  let u = url.trim();
+  if (!u) return "";
+  if (u.indexOf("dropbox.com") !== -1) {
+    u = u.replace(/([?&])dl=[01]/g, "$1raw=1");
+    if (u.indexOf("raw=1") === -1) u += (u.indexOf("?") === -1 ? "?" : "&") + "raw=1";
+  }
+  if (u.indexOf("drive.google.com") !== -1) {
+    // Google Drive "share" links need converting too.
+    const m = u.match(/\/d\/([A-Za-z0-9_-]{10,})/) || u.match(/[?&]id=([A-Za-z0-9_-]{10,})/);
+    if (m) u = "https://drive.google.com/uc?export=view&id=" + m[1];
+  }
+  return u;
+}
+
+function listPhotosFromUrls() {
+  const pasted = (store.urls || "").split("\n");
+  const combined = PHOTO_URLS.concat(pasted);
+  const out = [];
+  combined.forEach(function (raw, i) {
+    const u = fixShareLink(String(raw || ""));
+    if (!u || u.charAt(0) === "#") return;
+    out.push({ kind: "url", id: "url" + i, name: u.split("/").pop().split("?")[0], url: u, when: "" });
+  });
+  return out;
+}
+
+
+/* --------------------------------------------------------------------------
+   The slideshow itself
+   -------------------------------------------------------------------------- */
+
+let photos = [];        // every photo we know about
+let order = [];         // the positions of `photos`, in the order we show them
+let orderIndex = -1;    // where we are in `order`
+let timer = null;
+let paused = false;
+let usingLayerA = true;
+let consecutiveFailures = 0;
+
+function buildOrder() {
+  order = photos.map(function (_, i) { return i; });
+  if (SHUFFLE) {
+    // Fisher-Yates shuffle - a proper, evenly-random shuffle.
+    for (let i = order.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      const t = order[i]; order[i] = order[j]; order[j] = t;
+    }
+  } else {
+    // Newest first.
+    order.sort(function (a, b) { return String(photos[b].when).localeCompare(String(photos[a].when)); });
+  }
+  orderIndex = -1;
+}
+
+// Load an image fully before we fade to it, so the fade is never half-drawn.
+function preload(url) {
+  return new Promise(function (resolve, reject) {
+    const img = new Image();
+    img.decoding = "async";
+    img.onload = function () { resolve(url); };
+    img.onerror = function () { reject(new Error("The image could not be loaded.")); };
+    img.src = url;
+  });
+}
+
+async function showPhotoAt(step) {
+  if (photos.length === 0) return;
+  if (order.length === 0) buildOrder();
+
+  orderIndex += step;
+  if (orderIndex >= order.length) { buildOrder(); orderIndex = 0; }   // reached the end - go round again
+  if (orderIndex < 0) orderIndex = order.length - 1;
+
+  const photo = photos[order[orderIndex]];
+  if (!photo) return;
+
+  let url;
+  try {
+    url = await urlForPhoto(photo);
+    await preload(url);
+  } catch (e) {
+    // One bad photo should not stop the frame. Skip it and try the next.
+    consecutiveFailures++;
+    linkCache.delete(photo.path);
+    if (consecutiveFailures >= Math.min(8, Math.max(3, photos.length))) {
+      const reconnect = /RECONNECT_NEEDED|NOT_CONNECTED|401/.test(e.message || "");
+      showMessage(
+        reconnect ? "Dropbox needs reconnecting" : "The photos would not load",
+        reconnect
+          ? ["The frame's permission to read your Dropbox has run out.", "Tap the button below and connect again. It takes about thirty seconds."]
+          : ["The iPad reached the photos list but could not download the pictures.", "Check the iPad's internet connection, then reload this page."],
+        e.message, true
+      );
+      return;
+    }
+    scheduleNext(600);         // small pause, then try the next photo
+    return;
+  }
+
+  consecutiveFailures = 0;
+  hideMessage();
+
+  const incoming = usingLayerA ? $("layerB") : $("layerA");
+  const outgoing = usingLayerA ? $("layerA") : $("layerB");
+  incoming.src = url;
+  incoming.classList.add("visible");
+  outgoing.classList.remove("visible");
+  usingLayerA = !usingLayerA;
+
+  if (SHOW_FILE_NAME) $("caption").textContent = photo.name;
+
+  // Warm up the next photo in the background so the next fade is instant.
+  const nextPos = order[(orderIndex + 1) % order.length];
+  if (photos[nextPos]) {
+    urlForPhoto(photos[nextPos]).then(function (u) { const i = new Image(); i.src = u; }).catch(function () {});
+  }
+
+  scheduleNext(SECONDS_PER_PHOTO * 1000);
+}
+
+function scheduleNext(ms) {
+  clearTimeout(timer);
+  if (paused) return;
+  timer = setTimeout(function () { showPhotoAt(1); }, ms);
+}
+
+function goNext()  { clearTimeout(timer); showPhotoAt(1); }
+function goPrev()  { clearTimeout(timer); showPhotoAt(-1); }
+function togglePause() {
+  paused = !paused;
+  $("btnPause").innerHTML = paused ? "&#9654;&nbsp; Play" : "&#10074;&#10074;&nbsp; Pause";
+  if (paused) clearTimeout(timer); else scheduleNext(1000);
+}
+
+
+/* --------------------------------------------------------------------------
+   Clock
+   -------------------------------------------------------------------------- */
+
+function setUpClock() {
+  const clock = $("clock");
+  const caption = $("caption");
+
+  clock.className = "corner-" + CLOCK_CORNER;
+  // Put the file name in the corner diagonally opposite the clock.
+  const OPPOSITE = {
+    "top-left":     "bottom-right",
+    "top-right":    "bottom-left",
+    "bottom-left":  "top-right",
+    "bottom-right": "top-left"
+  };
+  caption.className = "corner-" + (OPPOSITE[CLOCK_CORNER] || "top-left");
+
+  if (SHOW_CLOCK)    clock.style.display = "block";
+  if (SHOW_FILE_NAME) caption.style.display = "block";
+  if (!SHOW_DATE)    clock.querySelector(".date").style.display = "none";
+
+  if (!SHOW_CLOCK && !SHOW_FILE_NAME) return;
+
+  function tick() {
+    if (SHOW_CLOCK) {
+      const now = new Date();
+      clock.querySelector(".time").textContent =
+        now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: !CLOCK_24_HOUR });
+      if (SHOW_DATE) {
+        clock.querySelector(".date").textContent =
+          now.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
+      }
+    }
+    setTimeout(tick, 1000 - (Date.now() % 1000) + 50);   // re-sync to the minute
+  }
+  tick();
+}
+
+
+/* --------------------------------------------------------------------------
+   Keeping the screen awake
+
+   The Screen Wake Lock API works in Safari on iPadOS 16.4 and newer, so it
+   works on your iPad. It is released whenever you switch apps, so we ask
+   for it again every time the frame comes back to the front.
+   -------------------------------------------------------------------------- */
+
+let wakeLock = null;
+
+async function keepAwake() {
+  if (!KEEP_SCREEN_AWAKE) return;
+  if (!("wakeLock" in navigator)) return;         // older iPad - Auto-Lock: Never still works
+  if (document.visibilityState !== "visible") return;
+  if (wakeLock) return;                           // we already hold one
+  try {
+    wakeLock = await navigator.wakeLock.request("screen");
+    wakeLock.addEventListener("release", function () { wakeLock = null; });
+  } catch (e) {
+    // Usually means Low Power Mode is on. Nothing to do but carry on.
+  }
+}
+
+
+/* --------------------------------------------------------------------------
+   Setup screen wiring
+   -------------------------------------------------------------------------- */
+
+function setSetupStatus(text, kind) {
+  const el = $("dbxStatus");
+  el.textContent = text;
+  el.className = "status" + (kind ? " " + kind : "");
+}
+
+function refreshSetupStatus() {
+  if (!appKey()) {
+    setSetupStatus("Not set up yet. Follow steps 1 and 2 below, or just paste photo links at the bottom.", "");
+  } else if (store.refreshToken) {
+    setSetupStatus("Connected to Dropbox. " + photos.length + " photo" + (photos.length === 1 ? "" : "s") + " found.", "good");
+  } else {
+    setSetupStatus("App key saved, but not connected yet. Do step 2.", "bad");
+  }
+}
+
+function openSetup() {
+  clearTimeout(timer);
+  $("inpAppKey").value = appKey();
+  $("inpFolder").value = store.folder !== undefined ? store.folder : DROPBOX_FOLDER_PATH;
+  $("inpUrls").value   = store.urls || "";
+  refreshSetupStatus();
+  $("setup").classList.add("showing");
+  hideControls();
+}
+
+function closeSetup() {
+  $("setup").classList.remove("showing");
+}
+
+function saveSetupAndRestart() {
+  store.appKey = $("inpAppKey").value.trim();
+  store.folder = $("inpFolder").value.trim();
+  const newUrls = $("inpUrls").value;
+  if (newUrls !== (store.urls || "")) { store.urls = newUrls; }
+  delete store.cursor;                   // folder may have changed - start the listing fresh
+  saveStore(store);
+  closeSetup();
+  start();
+}
+
+
+/* --------------------------------------------------------------------------
+   Tap controls
+   -------------------------------------------------------------------------- */
+
+let controlsTimer = null;
+
+function showControls() {
+  $("controls").classList.add("showing");
+  clearTimeout(controlsTimer);
+  controlsTimer = setTimeout(hideControls, 5000);
+}
+function hideControls() {
+  $("controls").classList.remove("showing");
+  clearTimeout(controlsTimer);
+}
+
+function wireUpTaps() {
+  document.body.addEventListener("click", function (ev) {
+    // Ignore taps that landed on a button or inside the setup screen.
+    if (ev.target.closest("#controls, #setup, #message button")) return;
+    if ($("setup").classList.contains("showing")) return;
+    if ($("controls").classList.contains("showing")) hideControls(); else showControls();
+    keepAwake();                          // a tap is a good moment to re-request this
+  });
+
+  $("btnPrev").onclick   = function () { goPrev(); showControls(); };
+  $("btnNext").onclick   = function () { goNext(); showControls(); };
+  $("btnPause").onclick  = function () { togglePause(); showControls(); };
+  $("btnSetup").onclick  = openSetup;
+  $("msgButton").onclick = openSetup;
+
+  $("btnConnect").onclick    = dropboxStartConnect;
+  $("btnFinish").onclick     = function () { dropboxFinishConnect($("inpCode").value); };
+  $("btnDisconnect").onclick = dropboxDisconnect;
+  $("btnSave").onclick       = saveSetupAndRestart;
+  $("btnCancel").onclick     = function () { closeSetup(); start(); };
+
+  // A keyboard, if one is attached: arrows and space.
+  document.addEventListener("keydown", function (e) {
+    if ($("setup").classList.contains("showing")) return;
+    if (e.key === "ArrowRight") goNext();
+    if (e.key === "ArrowLeft")  goPrev();
+    if (e.key === " ")        { e.preventDefault(); togglePause(); }
+  });
+
+  // Coming back to the frame after switching apps.
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "visible") {
+      keepAwake();
+      if (!paused && photos.length) scheduleNext(400);
+    } else {
+      clearTimeout(timer);
+    }
+  });
+
+  // Back online after the wifi dropped out.
+  window.addEventListener("online", function () { if (photos.length === 0) start(); });
+}
+
+
+/* --------------------------------------------------------------------------
+   Starting up
+   -------------------------------------------------------------------------- */
+
+async function start() {
+  clearTimeout(timer);
+  paused = false;
+  hideMessage();
+  showMessage("Loading your photos…", [], "", false);
+
+  const wantDropbox = PHOTO_SOURCE === "dropbox" && appKey() && store.refreshToken;
+
+  try {
+    if (wantDropbox) {
+      photos = await dropboxListPhotos();
+
+      // If the Dropbox folder is empty, quietly fall back to any pasted links.
+      if (photos.length === 0) {
+        const fallback = listPhotosFromUrls();
+        if (fallback.length) {
+          photos = fallback;
+        } else {
+          showMessage("That Dropbox folder is empty",
+            ["Add some photos to the folder on your computer or phone.",
+             "The frame checks again every " + CHECK_FOR_NEW_PHOTOS_MINUTES + " minutes, or you can reload this page."],
+            "Folder: " + (folderPath() || "(the app's own folder)"), true);
+          setTimeout(start, CHECK_FOR_NEW_PHOTOS_MINUTES * 60 * 1000);
+          return;
+        }
+      }
+    } else {
+      photos = listPhotosFromUrls();
+      if (photos.length === 0) {
+        const needsSetup = PHOTO_SOURCE === "dropbox";
+        showMessage(
+          needsSetup ? "Dropbox is not connected yet" : "No photo links yet",
+          needsSetup
+            ? ["Tap the button below, then follow steps 1 and 2 to connect your Dropbox.",
+               "Or paste some photo links at the bottom of that screen instead."]
+            : ["Open Setup and paste some photo links, one per line."],
+          "", true);
+        return;
+      }
+    }
+  } catch (e) {
+    const reconnect = /RECONNECT_NEEDED|NOT_CONNECTED/.test(e.message) || e.status === 401;
+    const missing   = e.status === 409;
+    showMessage(
+      reconnect ? "Dropbox needs reconnecting"
+        : missing ? "That Dropbox folder was not found"
+        : "Could not reach Dropbox",
+      reconnect ? ["Tap below and connect again. It takes about thirty seconds."]
+        : missing ? ["Check the folder name in Setup. Leave it empty to use the app's own folder.",
+                     "Folder names have to match exactly, including capital letters."]
+        : ["Check that the iPad is on wifi, then reload this page.",
+           "The frame will keep trying by itself every minute."],
+      e.message, true);
+    if (!reconnect && !missing) setTimeout(start, 60 * 1000);
+    return;
+  }
+
+  hideMessage();
+  buildOrder();
+  showPhotoAt(1);
+  startWatchingForNewPhotos();
+}
+
+// Every so often, ask Dropbox "anything new?" and slot new photos in
+// without interrupting the slideshow.
+let watchTimer = null;
+function startWatchingForNewPhotos() {
+  clearInterval(watchTimer);
+  if (PHOTO_SOURCE !== "dropbox" || !store.refreshToken) return;
+
+  watchTimer = setInterval(async function () {
+    if (document.visibilityState !== "visible") return;
+    try {
+      const before = photos.length;
+      const changed = await dropboxCheckForChanges();
+      if (changed) {
+        // Rebuild the running order but stay on the photo currently showing.
+        const current = order[orderIndex] !== undefined ? photos[order[orderIndex]] : null;
+        buildOrder();
+        if (current) {
+          const at = order.findIndex(function (i) { return photos[i] && photos[i].id === current.id; });
+          if (at !== -1) orderIndex = at;
+        }
+        console.log("[PhotoFrame] photo count " + before + " -> " + photos.length);
+      }
+    } catch (e) {
+      console.log("[PhotoFrame] check for new photos failed: " + e.message);
+    }
+  }, Math.max(2, CHECK_FOR_NEW_PHOTOS_MINUTES) * 60 * 1000);
+}
+
+// Apply the fade length from the settings block to both photo layers.
+function applyFadeSetting() {
+  const secs = Math.max(0, Number(FADE_SECONDS) || 0);
+  [$("layerA"), $("layerB")].forEach(function (el) {
+    el.style.transition = "opacity " + secs + "s ease-in-out";
+  });
+}
+
+// If the page was opened with ?code=... on the end (the redirect style of
+// signing in), finish the connection automatically.
+function handleRedirectCode() {
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get("code");
+  if (!code) return false;
+  history.replaceState({}, "", window.location.pathname);
+  openSetup();
+  dropboxFinishConnect(code);
+  return true;
+}
+
+// Go.
+window.addEventListener("load", function () {
+  applyFadeSetting();
+  setUpClock();
+  wireUpTaps();
+  keepAwake();
+  $("verInfo").textContent = "Photo Frame - single file version. Nothing typed here leaves this iPad.";
+  if (!handleRedirectCode()) start();
+});
+
+
+/* ==========================================================================
+   ==========================================================================
+
+     O P T I O N A L :   G O O G L E   P H O T O S     (not built - notes only)
+
+     Short version: Google Photos cannot be used as an automatic photo
+     source any more. This section explains exactly why, and what the
+     remaining option would involve, so you can decide whether it is worth
+     it. Nothing below runs. Dropbox above is the real source.
+
+     ---- What changed ----
+     Until 31 March 2025 an app could ask for permission to read your whole
+     Google Photos library or a named album, and then re-read it on a loop -
+     which is what a photo frame needs. Google removed those permissions
+     (the scopes named photoslibrary.readonly and
+     photoslibrary.readonly.appcreateddata). Any app still asking for them
+     now gets a 403 "insufficient authentication scopes" error. There is no
+     workaround, no paid tier that restores it, and no plan to bring it back.
+
+     ---- What is left: the Google Photos Picker API ----
+     The only supported route is a picker. The flow would be:
+
+       1. You register a project in the Google Cloud Console, enable the
+          "Photos Picker API", and create an OAuth client for a web page.
+          You must also add yourself as a test user, or push the project
+          through Google's verification review.
+       2. The frame asks Google for a picking session.
+       3. The frame shows you a link. You tap it, Google's own picker opens,
+          and YOU tap each photo you want.
+       4. The frame polls Google until you are finished, then receives the
+          list of photos you picked.
+       5. To display each one, the frame has to download it with your
+          access token attached (a plain <img src="..."> will not work,
+          because the picker's URLs reject unauthenticated requests), then
+          show the downloaded copy.
+
+     ---- Why that is a poor fit for a photo frame ----
+     * You must hand-pick photos every time. There is no "watch this album".
+       Adding a photo to a Google Photos album does nothing - the frame
+       cannot see it.
+     * A picking session expires (roughly a day), and the download links
+       expire in about an hour, so the frame must keep re-downloading.
+     * The sign-in has to be repeated whenever the token lapses, which on
+       an unverified test-user project is every seven days.
+     * It needs a Google Cloud project, a consent screen, and a test-user
+       list - considerably more setup than the whole Dropbox path above.
+
+     ---- If you ever want it anyway ----
+     The pieces would be:
+       POST https://photospicker.googleapis.com/v1/sessions
+       GET  https://photospicker.googleapis.com/v1/sessions/{id}      (poll)
+       GET  https://photospicker.googleapis.com/v1/mediaItems?sessionId={id}
+       then for each item: fetch(baseUrl + "=w2048-h1536",
+                                 { headers: { Authorization: "Bearer " + token } })
+            and turn the result into a blob URL, the same way this file
+            already does for HEIC photos.
+     Scope needed: https://www.googleapis.com/auth/photospicker.mediaitems.readonly
+
+     ---- The practical middle ground ----
+     If the photos you want live in Google Photos, the easiest thing by far
+     is to download the ones you want once and drop them in the Dropbox
+     folder. Then they behave like every other photo in the frame.
+
+   ==========================================================================
+   ========================================================================== */
+</script>
+</body>
+</html>
