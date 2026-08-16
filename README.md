@@ -182,6 +182,23 @@ Drop photos in there. That is the whole workflow.
 - Video clips play too: mp4, mov, m4v. See "Videos" below.
 - Anything else in the folder is ignored.
 
+### How photos change
+
+Setup has a **How photos change** row. Tap one and the next photo uses it.
+
+| Choice | What it looks like |
+|---|---|
+| **Dissolve** | One photo melts into the next. The classic, and the default |
+| **Through black** | Fades down to black, then up into the next. Unhurried, cinematic |
+| **Slide across** | The next photo slides in from the right |
+| **Slow push in** | Dissolve with a gentle zoom, like a camera settling |
+| **Blur through** | The old photo blurs away as the new one comes into focus |
+| **Surprise me** | A different one each time |
+
+`FADE_SECONDS` controls how long any of them take. If the iPad has Reduce
+Motion switched on in Accessibility settings, everything falls back to a plain
+dissolve.
+
 ### Quiet hours
 
 Setup has a **Quiet hours** section. The frame fades to black at your chosen
@@ -253,6 +270,7 @@ GitHub, then reload the page on the iPad.
 |---|---|---|
 | `SECONDS_PER_PHOTO` | How long each photo stays up | `12` |
 | `SHUFFLE` | `true` = random order, `false` = newest first | `true` |
+| `TRANSITION` | `"fade"`, `"dip"`, `"slide"`, `"zoom"`, `"blur"` or `"random"`. Also settable on the iPad | `"fade"` |
 | `FADE_SECONDS` | Length of the cross-fade. `0` = instant | `1.5` |
 | `CORNER_SHOWS` | What the corner label shows: `"folder"`, `"clock"`, `"folder+clock"`, `"filename"`, `"none"` | `"folder"` |
 | `CORNER_POSITION` | `"top-left"`, `"top-right"`, `"bottom-left"`, `"bottom-right"` | `"bottom-right"` |

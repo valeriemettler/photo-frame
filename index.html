@@ -50,7 +50,10 @@
     transition: opacity 1.5s ease-in-out;  /* overwritten by FADE_SECONDS */
     will-change: opacity;
   }
-  .photo-layer.visible { opacity: 1; }
+  /* Opacity, transform and filter are driven from JavaScript so the different
+     transitions can share one set of layers. The class is only a marker for
+     which layer is on screen. */
+  .photo-layer.visible { /* opacity set inline by runTransition() */ }
 
   /* Quiet hours. Sits above the photos but below the setup screen, so you can
      still tap through to Setup while it is asleep. */
@@ -317,6 +320,10 @@
       <h3>Order</h3>
       <div id="orderPicker" class="pills"></div>
 
+      <h3>How photos change</h3>
+      <p class="help">Tap one to see it straight away on the next photo.</p>
+      <div id="transitionPicker" class="pills"></div>
+
       <div class="row" style="margin-top:18px">
         <button id="btnApply" class="primary">Show these photos</button>
       </div>
@@ -410,9 +417,19 @@ const SECONDS_PER_PHOTO = 12;
 // false = ordered, newest photo first
 const SHUFFLE = true;
 
-// How long the cross-fade between two photos takes, in seconds.
-// 0 = instant switch. 1.5 is a gentle fade.
+// How long the change between two photos takes, in seconds.
+// 0 = instant switch. 1.5 is gentle.
 const FADE_SECONDS = 1.5;
+
+// How one photo becomes the next. You can also change this from the Setup
+// screen on the iPad. One of:
+//   "fade"   one photo dissolves into the next (the classic)
+//   "dip"    fades down to black, then up into the next - unhurried, cinematic
+//   "slide"  the next photo slides in from the right
+//   "zoom"   dissolve with a slow push in, like a camera settling
+//   "blur"   the old photo blurs away as the new one comes into focus
+//   "random" a different one each time
+const TRANSITION = "fade";
 
 
 /* --- The little label in the corner ------------------------------------- */
@@ -1020,7 +1037,7 @@ let order = [];         // the positions of `photos`, in the order we show them
 let orderIndex = -1;    // where we are in `order`
 let timer = null;
 let paused = false;
-let usingLayerA = true;
+let visibleLayer = null;    // the layer element currently on screen
 let lastDayBuilt = "";      // used to notice midnight for daily folder rotation
 let showingPhoto = null;    // the photo actually on screen right now
 let consecutiveFailures = 0;
@@ -1179,6 +1196,103 @@ function sortOrder() {
   }
 }
 
+/* --------------------------------------------------------------------------
+   Transitions
+
+   Each one is described as two states: where the incoming photo starts, and
+   where the outgoing photo ends up. Both then travel to, or away from, the
+   neutral state - fully visible, unmoved, unblurred. Doing it this way means
+   every transition shares one piece of machinery.
+   -------------------------------------------------------------------------- */
+
+const NEUTRAL = { opacity: 1, transform: "none", filter: "none" };
+
+const TRANSITIONS = {
+  fade:  { enterFrom: { opacity: 0 },
+           exitTo:    { opacity: 0 } },
+
+  slide: { enterFrom: { opacity: 1, transform: "translateX(100%)" },
+           exitTo:    { opacity: 1, transform: "translateX(-100%)" },
+           easing: "cubic-bezier(0.6, 0, 0.2, 1)" },
+
+  zoom:  { enterFrom: { opacity: 0, transform: "scale(1.07)" },
+           exitTo:    { opacity: 0, transform: "scale(0.97)" },
+           easing: "cubic-bezier(0.3, 0, 0.2, 1)" },
+
+  blur:  { enterFrom: { opacity: 0, filter: "blur(22px)" },
+           exitTo:    { opacity: 0, filter: "blur(22px)" } },
+
+  // Sequential rather than overlapping: the old photo leaves first, then the
+  // new one arrives, with black in between.
+  dip:   { enterFrom: { opacity: 0 },
+           exitTo:    { opacity: 0 },
+           halves: true }
+};
+
+const TRANSITION_NAMES = ["fade", "dip", "slide", "zoom", "blur"];
+
+function transitionMode() {
+  const chosen = store.transition || TRANSITION || "fade";
+  if (chosen === "random") {
+    return TRANSITION_NAMES[Math.floor(Math.random() * TRANSITION_NAMES.length)];
+  }
+  return TRANSITIONS[chosen] ? chosen : "fade";
+}
+
+// Someone who has asked their iPad to reduce motion should not get things
+// flying across the screen.
+function prefersLessMotion() {
+  return window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+function applyLayerState(el, state) {
+  el.style.opacity   = (state.opacity !== undefined ? state.opacity : NEUTRAL.opacity);
+  el.style.transform = (state.transform || NEUTRAL.transform);
+  el.style.filter    = (state.filter || NEUTRAL.filter);
+}
+
+// Move `incoming` on screen and `outgoing` off it.
+function runTransition(incoming, outgoing) {
+  const secs = Math.max(0, Number(FADE_SECONDS) || 0);
+  const name = prefersLessMotion() ? "fade" : transitionMode();
+  const t = TRANSITIONS[name] || TRANSITIONS.fade;
+  const ease = t.easing || "ease-in-out";
+
+  // "dip" runs in two halves with black in between; the others overlap.
+  const outSecs = t.halves ? secs / 2 : secs;
+  const inSecs  = t.halves ? secs / 2 : secs;
+  const inDelay = t.halves ? secs / 2 : 0;
+
+  const props = "opacity " + inSecs + "s " + ease + " " + inDelay + "s, "
+              + "transform " + inSecs + "s " + ease + " " + inDelay + "s, "
+              + "filter "    + inSecs + "s " + ease + " " + inDelay + "s";
+
+  if (outgoing && outgoing !== incoming) {
+    outgoing.style.transition = "opacity " + outSecs + "s " + ease + ", "
+                              + "transform " + outSecs + "s " + ease + ", "
+                              + "filter " + outSecs + "s " + ease;
+    applyLayerState(outgoing, t.exitTo);
+    outgoing.classList.remove("visible");
+  }
+
+  // Put the incoming layer at its starting point with no animation, let the
+  // browser register that, then animate it to neutral.
+  incoming.style.transition = "none";
+  applyLayerState(incoming, t.enterFrom);
+  void incoming.offsetWidth;               // forces the browser to catch up
+  incoming.style.transition = props;
+  applyLayerState(incoming, NEUTRAL);
+  incoming.classList.add("visible");
+
+  visibleLayer = incoming;
+}
+
+// The image layer that is not currently on screen.
+function nextImageLayer() {
+  const a = $("layerA"), b = $("layerB");
+  return (visibleLayer === a) ? b : a;
+}
+
 // Same idea for a video clip: wait until enough of it has arrived to play.
 // There is only one video element, so this loads straight into it.
 function preloadVideo(url) {
@@ -1262,23 +1376,28 @@ async function showPhotoAt(step) {
     return;
   }
 
+  const outgoing = visibleLayer;
+  let incoming;
+
   if (playAsVideo) {
-    // The video shares the stage with the photo layers, so fade both out.
-    $("layerA").classList.remove("visible");
-    $("layerB").classList.remove("visible");
-    vid.classList.add("visible");
+    incoming = vid;
     try { vid.currentTime = 0; } catch (e) { /* not seekable yet */ }
     const started = vid.play();
     if (started && started.catch) started.catch(function () { /* autoplay refused */ });
   } else {
-    const incoming = usingLayerA ? $("layerB") : $("layerA");
-    const outgoing = usingLayerA ? $("layerA") : $("layerB");
+    incoming = nextImageLayer();
     incoming.src = url;
+    if (outgoing !== vid) { try { vid.pause(); } catch (e) {} }
+  }
+
+  // Two clips back to back land on the same element - nothing to transition.
+  if (incoming !== outgoing) {
+    runTransition(incoming, outgoing);
+    if (outgoing === vid && !playAsVideo) { try { vid.pause(); } catch (e) {} }
+  } else {
+    applyLayerState(incoming, NEUTRAL);
     incoming.classList.add("visible");
-    outgoing.classList.remove("visible");
-    vid.classList.remove("visible");
-    try { vid.pause(); } catch (e) {}
-    usingLayerA = !usingLayerA;
+    visibleLayer = incoming;
   }
 
   showingPhoto = photo;
@@ -1623,6 +1742,20 @@ function renderPickers() {
     renderPickers();
   });
 
+  // How one photo becomes the next
+  renderPills($("transitionPicker"), [
+    { value: "fade",   label: "Dissolve" },
+    { value: "dip",    label: "Through black" },
+    { value: "slide",  label: "Slide across" },
+    { value: "zoom",   label: "Slow push in" },
+    { value: "blur",   label: "Blur through" },
+    { value: "random", label: "Surprise me" }
+  ], store.transition || TRANSITION || "fade", function (value) {
+    store.transition = value;
+    saveStore(store);
+    renderPickers();
+  });
+
   // Quiet hours
   const sleep = sleepSettings();
   renderPills($("sleepPicker"), [
@@ -1915,11 +2048,11 @@ function startWatchingForNewPhotos() {
   }, Math.max(2, CHECK_FOR_NEW_PHOTOS_MINUTES) * 60 * 1000);
 }
 
-// Apply the fade length from the settings block to both photo layers.
+// Start every layer hidden and unmoved. runTransition() takes over from here.
 function applyFadeSetting() {
-  const secs = Math.max(0, Number(FADE_SECONDS) || 0);
-  [$("layerA"), $("layerB")].forEach(function (el) {
-    el.style.transition = "opacity " + secs + "s ease-in-out";
+  [$("layerA"), $("layerB"), $("layerV")].forEach(function (el) {
+    el.style.transition = "none";
+    applyLayerState(el, { opacity: 0 });
   });
 }
 
