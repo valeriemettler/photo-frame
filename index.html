@@ -264,7 +264,10 @@
         <button id="btnSave" class="primary">Save and start slideshow</button>
         <button id="btnCancel">Cancel</button>
       </div>
-      <p class="help" style="margin-top:26px" id="verInfo"></p>
+      <hr>
+      <h3>What the frame currently has</h3>
+      <p class="help">If something will not connect, read this bit out. Nothing here leaves the iPad.</p>
+      <p class="help" style="margin-top:10px" id="verInfo"></p>
     </div>
   </div>
 
@@ -536,7 +539,7 @@ async function dropboxFinishConnect(code) {
 
   $("inpCode").value = "";
   setSetupStatus(store.refreshToken
-    ? "Connected. This iPad will stay connected from now on."
+    ? "Connected. This iPad will stay connected from now on. Now tap “Save and start slideshow” at the bottom."
     : "Connected, but Dropbox did not send a renewal token, so this will need reconnecting in about 4 hours. Try disconnecting and connecting again.",
     "good");
 }
@@ -963,6 +966,35 @@ function setSetupStatus(text, kind) {
   const el = $("dbxStatus");
   el.textContent = text;
   el.className = "status" + (kind ? " " + kind : "");
+  // Remember it, so a message is still readable after the app restarts.
+  store.lastStatus = text;
+  saveStore(store);
+  showDiagnostics();
+}
+
+// A plain-English readout of what the frame actually has stored. This is what
+// to read out loud when something is not connecting.
+function showDiagnostics() {
+  const el = $("verInfo");
+  if (!el) return;
+  const key = appKey();
+  const lines = [
+    "App key: " + (key ? "saved (" + key.slice(0, 4) + "..." + key.slice(-3) + ")" : "MISSING"),
+    "Dropbox permission: " + (store.refreshToken ? "saved" : "MISSING"),
+    "Access token: " + (store.accessToken
+      ? (Date.now() < (store.accessExpiry || 0)
+          ? "valid until " + new Date(store.accessExpiry).toLocaleTimeString()
+          : "expired (will renew by itself)")
+      : "none yet"),
+    "Photos found: " + photos.length,
+    "Folder: " + (folderPath() || "(the app's own folder)"),
+    "Last message: " + (store.lastStatus || "-")
+  ];
+  el.textContent = lines.join("\n");
+  el.style.whiteSpace = "pre-line";
+  el.style.fontFamily = 'ui-monospace, "SF Mono", Menlo, monospace';
+  el.style.fontSize = "13px";
+  el.style.lineHeight = "1.7";
 }
 
 function refreshSetupStatus() {
@@ -990,7 +1022,12 @@ function closeSetup() {
 }
 
 function saveSetupAndRestart() {
-  store.appKey = $("inpAppKey").value.trim();
+  // Only overwrite the saved App key if the box actually has something in it.
+  // Blanking it here used to wipe a perfectly good connection and throw the
+  // frame back to "Dropbox is not connected yet".
+  const typedKey = $("inpAppKey").value.trim();
+  if (typedKey) store.appKey = typedKey;
+
   store.folder = $("inpFolder").value.trim();
   const newUrls = $("inpUrls").value;
   if (newUrls !== (store.urls || "")) { store.urls = newUrls; }
@@ -1182,7 +1219,7 @@ window.addEventListener("load", function () {
   setUpClock();
   wireUpTaps();
   keepAwake();
-  $("verInfo").textContent = "Photo Frame - single file version. Nothing typed here leaves this iPad.";
+  showDiagnostics();
   if (!handleRedirectCode()) start();
 });
 
