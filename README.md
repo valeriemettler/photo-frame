@@ -10,6 +10,12 @@ The whole thing is `index.html`. That single file is the program.
 
 ## Part 1. Put the file somewhere Safari can open it
 
+> **Already done.** The repository exists and the page is live at
+> **<https://valeriemettler.github.io/photo-frame/>**
+>
+> Open that on the iPad and skip to Part 2. The rest of Part 1 is kept as a
+> record of how it was set up, and in case you ever need to redo it.
+
 **You cannot just copy the file onto the iPad.** Two reasons, both worth knowing
 so the error messages make sense later:
 
