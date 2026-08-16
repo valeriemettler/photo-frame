@@ -205,6 +205,7 @@ GitHub, then reload the page on the iPad.
 | `SHOW_FILE_NAME` | Photo's file name in the opposite corner | `false` |
 | `KEEP_SCREEN_AWAKE` | Ask iPadOS to keep the screen on | `true` |
 | `CHECK_FOR_NEW_PHOTOS_MINUTES` | How often to look for new photos | `10` |
+| `USE_SMALLER_PHOTOS` | Download 2048-pixel copies instead of full-size originals. Looks identical on an iPad, uses far less data | `true` |
 | `DROPBOX_FOLDER_PATH` | Leave empty for the app's own folder | `""` |
 
 When you edit, keep the quotation marks and the semicolon exactly as they are.

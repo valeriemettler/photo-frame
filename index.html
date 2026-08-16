@@ -355,6 +355,13 @@ const DROPBOX_FOLDER_PATH = "";
 // How often to check Dropbox for photos you have added since, in minutes.
 const CHECK_FOR_NEW_PHOTOS_MINUTES = 10;
 
+// true  = ask Dropbox for a 2048-pixel copy of each photo instead of the
+//         original. The iPad screen cannot show more detail than that, so it
+//         looks identical while downloading far less.
+// false = always download the full-size original.
+// iPhone .heic photos are converted either way - Safari needs it.
+const USE_SMALLER_PHOTOS = true;
+
 
 /* --- Backup option: a hand-written list of photo links ------------------
    Only used when PHOTO_SOURCE is "list", or when Dropbox is not connected.
@@ -388,6 +395,12 @@ const IMAGE_EXTENSIONS = ["jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "
 // Apple's HEIC files need converting before Safari will reliably show them
 // from Dropbox, so we ask Dropbox for a JPEG version of these.
 const NEEDS_CONVERSION = ["heic", "heif", "tif", "tiff", "bmp"];
+
+// Formats Dropbox can make a smaller copy of, where the original would also
+// have worked. Used only when USE_SMALLER_PHOTOS is true.
+// "gif" is deliberately absent - shrinking one would freeze the animation.
+// "avif" is absent because Dropbox cannot resize it.
+const CAN_SHRINK = ["jpg", "jpeg", "png", "webp"];
 
 // Where we remember things on this iPad (survives restarts).
 const STORE_KEY = "photoframe.v1";
@@ -743,34 +756,52 @@ function rememberLink(path, url, expires, isBlob) {
   }
 }
 
+// Ask Dropbox for a screen-sized JPEG copy of one photo.
+async function screenSizedCopy(photo) {
+  const token = await dropboxToken();
+  const res = await fetch(DBX_CONTENT + "/files/get_thumbnail_v2", {
+    method: "POST",
+    headers: {
+      "Authorization": "Bearer " + token,
+      "Dropbox-API-Arg": asciiJson({
+        resource: { ".tag": "path", path: photo.path },
+        format:   { ".tag": "jpeg" },
+        size:     { ".tag": "w2048h1536" },
+        mode:     { ".tag": "strict" }
+      })
+    }
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(function () { return ""; });
+    throw new Error("Dropbox thumbnail " + res.status + ": " + text.slice(0, 200));
+  }
+  const url = URL.createObjectURL(await res.blob());
+  rememberLink(photo.path, url, Date.now() + 3 * 60 * 60 * 1000, true);
+  return url;
+}
+
 async function urlForPhoto(photo) {
   if (photo.kind === "url") return photo.url;
 
   const cached = linkCache.get(photo.path);
   if (cached && Date.now() < cached.expires) return cached.url;
 
-  if (NEEDS_CONVERSION.indexOf(fileExtension(photo.name)) !== -1) {
-    // Ask Dropbox to convert to a big JPEG we can display.
-    const token = await dropboxToken();
-    const res = await fetch(DBX_CONTENT + "/files/get_thumbnail_v2", {
-      method: "POST",
-      headers: {
-        "Authorization": "Bearer " + token,
-        "Dropbox-API-Arg": asciiJson({
-          resource: { ".tag": "path", path: photo.path },
-          format:   { ".tag": "jpeg" },
-          size:     { ".tag": "w2048h1536" },
-          mode:     { ".tag": "strict" }
-        })
-      }
-    });
-    if (!res.ok) {
-      const text = await res.text().catch(function () { return ""; });
-      throw new Error("Dropbox thumbnail " + res.status + ": " + text.slice(0, 200));
+  const ext = fileExtension(photo.name);
+
+  // Some formats Safari cannot show at all, so a converted copy is the only
+  // option. Others are converted purely to save data - for those, falling
+  // back to the original is fine if the conversion is unavailable.
+  const mustConvert = NEEDS_CONVERSION.indexOf(ext) !== -1;
+  const worthShrinking = USE_SMALLER_PHOTOS && CAN_SHRINK.indexOf(ext) !== -1;
+
+  if (mustConvert || worthShrinking) {
+    try {
+      return await screenSizedCopy(photo);
+    } catch (e) {
+      // Dropbox refuses to make a smaller copy of files over 20 MB, among
+      // other cases. For those, quietly use the full-size original instead.
+      if (mustConvert) throw e;
     }
-    const url = URL.createObjectURL(await res.blob());
-    rememberLink(photo.path, url, Date.now() + 3 * 60 * 60 * 1000, true);
-    return url;
   }
 
   const data = await dbx("/files/get_temporary_link", { path: photo.path });
