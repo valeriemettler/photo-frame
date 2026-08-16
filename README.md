@@ -179,7 +179,8 @@ Drop photos in there. That is the whole workflow.
 - iPhone `.heic` photos work. The frame quietly asks Dropbox for a normal
   version of those.
 - Works with: jpg, jpeg, png, gif, webp, heic, heif, avif, bmp, tif, tiff.
-- Videos are ignored.
+- Video clips play too: mp4, mov, m4v. See "Videos" below.
+- Anything else in the folder is ignored.
 
 ### Quiet hours
 
