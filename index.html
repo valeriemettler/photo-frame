@@ -327,6 +327,10 @@
       <p class="help">Tap one to see it straight away on the next photo.</p>
       <div id="transitionPicker" class="pills"></div>
 
+      <h3>Label in the corner</h3>
+      <p class="help" id="cornerHelp"></p>
+      <div id="cornerPicker" class="pills"></div>
+
       <div class="row" style="margin-top:18px">
         <button id="btnApply" class="primary">Show these photos</button>
       </div>
@@ -438,12 +442,17 @@ const TRANSITION = "fade";
 /* --- The little label in the corner ------------------------------------- */
 
 // What the corner label shows. One of:
+//   "place"        where the photo was taken, falling back to the folder name
 //   "folder"       the name of the folder the photo is in
 //   "clock"        the time, and the date underneath
 //   "folder+clock" the folder name, with the time underneath
 //   "filename"     the photo's file name
 //   "none"         nothing at all
-const CORNER_SHOWS = "folder";
+//
+// "place" needs a locations file in the Dropbox folder - any file whose name
+// ends "-photo-locations.csv". Photos with no entry show the folder name
+// instead, so it is always safe to leave this on.
+const CORNER_SHOWS = "place";
 
 // Which corner it sits in. One of:
 //   "top-left"  "top-right"  "bottom-left"  "bottom-right"
@@ -836,6 +845,7 @@ function asciiJson(obj) {
 // List every photo in the folder (and its sub-folders).
 async function dropboxListPhotos() {
   const found = [];
+  locationFiles = [];
   let page = await dbx("/files/list_folder", {
     path: folderPath(),
     recursive: true,
@@ -857,9 +867,22 @@ async function dropboxListPhotos() {
   return found;
 }
 
+// Spreadsheets of where each photo was taken, found alongside the photos.
+let locationFiles = [];
+
+function isLocationFile(name) {
+  return /-photo-locations\.csv$/i.test(name) || /^locations\.csv$/i.test(name);
+}
+
 function collectPhotos(entries, into) {
   entries.forEach(function (e) {
     if (e[".tag"] !== "file") return;
+    if (isLocationFile(e.name)) {
+      if (!locationFiles.some(function (f) { return f.path === e.path_lower; })) {
+        locationFiles.push({ name: e.name, path: e.path_lower });
+      }
+      return;
+    }
     if (!isShowable(e.name)) return;
     into.push({
       kind: "dropbox",
@@ -889,6 +912,13 @@ async function dropboxCheckForChanges() {
         return;
       }
       if (e[".tag"] !== "file") return;
+      if (isLocationFile(e.name)) {
+        if (!locationFiles.some(function (f) { return f.path === e.path_lower; })) {
+          locationFiles.push({ name: e.name, path: e.path_lower });
+          loadLocationFiles();               // a new spreadsheet just appeared
+        }
+        return;
+      }
       if (!isShowable(e.name)) return;
       if (photos.some(function (p) { return p.id === e.id; })) return;
       photos.push({
@@ -1542,6 +1572,144 @@ function togglePause() {
    Clock
    -------------------------------------------------------------------------- */
 
+/* --------------------------------------------------------------------------
+   Where each photo was taken
+
+   The frame does no geocoding of its own. Instead it reads a spreadsheet you
+   put in the Dropbox folder - any file ending "-photo-locations.csv" - and
+   matches rows to photos by file name. That keeps the good, checked answers
+   rather than the frame guessing live, needs no account or key anywhere, and
+   costs one small download at startup.
+
+   Every column is optional. A photo with no row simply shows its folder name.
+   -------------------------------------------------------------------------- */
+
+let placesByFile = {};        // "img_0016.heic" -> { place, city, date, maps }
+
+// A small CSV reader. Handles quoted fields and commas inside them, which
+// matters because addresses are full of commas.
+function parseCsv(text) {
+  const rows = [];
+  let row = [], field = "", inQuotes = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; }   // "" means a real quote
+        else inQuotes = false;
+      } else field += c;
+    } else if (c === '"') {
+      inQuotes = true;
+    } else if (c === ",") {
+      row.push(field); field = "";
+    } else if (c === "\n") {
+      row.push(field); rows.push(row); row = []; field = "";
+    } else if (c !== "\r") {
+      field += c;
+    }
+  }
+  if (field.length || row.length) { row.push(field); rows.push(row); }
+  return rows;
+}
+
+function loadPlacesFromCsv(text) {
+  const rows = parseCsv(text.replace(/^﻿/, ""));   // strip the byte-order mark
+  if (rows.length < 2) return 0;
+
+  // Match column names loosely, so a slightly different spreadsheet still works.
+  const head = rows[0].map(function (h) { return h.trim().toLowerCase(); });
+  const col = function () {
+    for (let a = 0; a < arguments.length; a++) {
+      const want = arguments[a];
+      for (let i = 0; i < head.length; i++) {
+        if (head[i] === want) return i;
+      }
+    }
+    return -1;
+  };
+
+  const iFile  = col("file", "filename", "name");
+  if (iFile === -1) return 0;
+  const iPlace = col("place / venue", "place/venue", "place", "venue");
+  const iCity  = col("city", "town");
+  const iHood  = col("neighborhood", "neighbourhood");
+  const iStreet= col("street address", "street");
+  const iState = col("state", "region");
+  const iCountry = col("country");
+  const iDate  = col("date");
+  const iMaps  = col("google maps", "map", "maps");
+
+  const at = function (r, i) { return (i >= 0 && r[i] !== undefined) ? r[i].trim() : ""; };
+  let n = 0;
+
+  for (let r = 1; r < rows.length; r++) {
+    const row = rows[r];
+    const file = at(row, iFile);
+    if (!file) continue;
+    placesByFile[file.toLowerCase()] = {
+      place:   at(row, iPlace),
+      street:  at(row, iStreet),
+      hood:    at(row, iHood),
+      city:    at(row, iCity),
+      state:   at(row, iState),
+      country: at(row, iCountry),
+      date:    at(row, iDate),
+      maps:    at(row, iMaps)
+    };
+    n++;
+  }
+  return n;
+}
+
+// Find and read any locations spreadsheet sitting in the Dropbox folder.
+async function loadLocationFiles() {
+  placesByFile = {};
+  if (!store.refreshToken) return;
+
+  const wanted = locationFiles.slice();
+  for (let i = 0; i < wanted.length; i++) {
+    try {
+      const link = await dbx("/files/get_temporary_link", { path: wanted[i].path });
+      const res = await fetch(link.link);
+      if (!res.ok) continue;
+      const n = loadPlacesFromCsv(await res.text());
+      console.log("[PhotoFrame] " + wanted[i].name + ": " + n + " locations loaded");
+    } catch (e) {
+      console.log("[PhotoFrame] could not read " + wanted[i].name + ": " + e.message);
+    }
+  }
+}
+
+// The line to print for a photo: the most specific thing known about it.
+function placeLabelFor(photo) {
+  if (!photo || photo.kind !== "dropbox") return "";
+  const p = placesByFile[(photo.name || "").toLowerCase()];
+  if (!p) return "";
+  return p.place || p.street || p.hood || p.city || "";
+}
+
+// The quieter second line: roughly where in the world, plus when.
+function placeSubLabelFor(photo) {
+  if (!photo || photo.kind !== "dropbox") return "";
+  const p = placesByFile[(photo.name || "").toLowerCase()];
+  if (!p) return "";
+
+  const bits = [];
+  const top = placeLabelFor(photo);
+  if (p.city && p.city !== top) bits.push(p.city);
+  else if (p.hood && p.hood !== top) bits.push(p.hood);
+  if (p.country && p.country !== top) bits.push(p.country);
+
+  let when = "";
+  if (p.date) {
+    const d = new Date(p.date + "T12:00:00");
+    if (!isNaN(d)) when = d.toLocaleDateString([], { month: "long", year: "numeric" });
+  }
+  if (when) bits.push(when);
+  return bits.join(" · ");
+}
+
 // Work out which folder a photo lives in, ready to show on screen.
 // "/Iceland 2025/img_0042.heic"  ->  "Iceland 2025"
 // "/img_0042.heic"               ->  NO_FOLDER_LABEL (it is not in a folder)
@@ -1594,8 +1762,13 @@ function dateNow() {
 
 // Fill in the corner label. Called when the photo changes and once a second
 // so any clock stays honest.
+function cornerShows() {
+  return store.cornerShows || CORNER_SHOWS || "folder";
+}
+
 function updateCornerLabel() {
   const box = $("clock");
+  const CORNER_SHOWS = cornerShows();      // the saved choice wins
   if (CORNER_SHOWS === "none") { box.style.display = "none"; return; }
 
   const photo = currentPhoto();
@@ -1604,6 +1777,11 @@ function updateCornerLabel() {
   if (CORNER_SHOWS === "clock") {
     top = timeNow();
     bottom = SHOW_DATE ? dateNow() : "";
+  } else if (CORNER_SHOWS === "place") {
+    // Fall back to the folder name whenever there is no location for a photo.
+    top = placeLabelFor(photo);
+    bottom = placeSubLabelFor(photo);
+    if (!top) { top = folderLabelFor(photo); bottom = ""; }
   } else if (CORNER_SHOWS === "folder") {
     top = folderLabelFor(photo);
   } else if (CORNER_SHOWS === "folder+clock") {
@@ -1855,6 +2033,24 @@ function renderPickers() {
     store.transition = value;
     saveStore(store);
     renderPickers();
+  });
+
+  // What the corner label shows
+  const nPlaces = Object.keys(placesByFile).length;
+  $("cornerHelp").textContent = nPlaces
+    ? nPlaces + " photos have a known location."
+    : "No locations file found in your Dropbox folder yet, so “Where it was taken” will show folder names.";
+  renderPills($("cornerPicker"), [
+    { value: "place",        label: "Where it was taken" },
+    { value: "folder",       label: "Folder name" },
+    { value: "clock",        label: "Time and date" },
+    { value: "folder+clock", label: "Folder and time" },
+    { value: "none",         label: "Nothing" }
+  ], cornerShows(), function (value) {
+    store.cornerShows = value;
+    saveStore(store);
+    renderPickers();
+    updateCornerLabel();
   });
 
   // Quiet hours
@@ -2116,6 +2312,7 @@ async function start() {
   }
 
   hideMessage();
+  await loadLocationFiles();      // where each photo was taken, if we know
   buildOrder();
   showPhotoAt(1);
   startWatchingForNewPhotos();

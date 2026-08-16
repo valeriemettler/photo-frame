@@ -182,6 +182,30 @@ Drop photos in there. That is the whole workflow.
 - Video clips play too: mp4, mov, m4v. See "Videos" below.
 - Anything else in the folder is ignored.
 
+### Showing where each photo was taken
+
+Put a file ending `-photo-locations.csv` anywhere in your Dropbox folder and
+the frame will label each photo with the place it was taken:
+
+```
+L'Antica Pizzeria da Michele
+Napoli · Italia · September 2025
+```
+
+The frame does no location lookups of its own. It reads that spreadsheet once
+at startup and matches rows to photos by file name, so there is no account,
+no key, and nothing to pay. Photos with no row simply show the folder name, so
+it is always safe to leave switched on.
+
+Generate one for a folder with:
+
+```
+python3 ~/projects/photo-locations/build_locations_csv.py ~/Documents/YourFolder
+```
+
+Then upload the resulting `.csv` into the Dropbox folder alongside the photos.
+Choose what the corner shows under **Label in the corner** in Setup.
+
 ### How photos change
 
 Setup has a **How photos change** row. Tap one and the next photo uses it.
