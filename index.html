@@ -65,6 +65,26 @@
   }
   #sleepScreen.showing { opacity: 1; }
 
+  /* Banner across the top while reviewing hidden photos, so it is never
+     unclear why the frame is showing pictures you thought you got rid of. */
+  #reviewBar {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    z-index: 26;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding: calc(env(safe-area-inset-top) + 12px) 20px 12px;
+    background: rgba(175, 95, 40, 0.92);
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+    font-size: 16px;
+  }
+  #reviewBar.showing { display: flex; }
+  #reviewBar button { font-size: 15px; padding: 8px 16px; }
+
   /* The corner label - folder name, clock, or file name. See CORNER_SHOWS. */
   #clock {
     position: absolute;
@@ -251,6 +271,12 @@
   <!-- Quiet hours: a plain black sheet over everything -->
   <div id="sleepScreen"></div>
 
+  <!-- Shown only while looking back through hidden photos -->
+  <div id="reviewBar">
+    <span>Hidden photos &mdash; tap <strong>Unhide this</strong> to bring one back</span>
+    <button id="btnDoneReview">Done</button>
+  </div>
+
   <!-- Clock / date -->
   <div id="clock"><div class="time"></div><div class="date"></div></div>
 
@@ -271,6 +297,7 @@
     <button id="btnPause">&#10074;&#10074;&nbsp; Pause</button>
     <button id="btnNext">Next &nbsp;&#9654;</button>
     <button id="btnHide">Hide this</button>
+    <button id="btnUndoHide" style="display:none">Undo hide</button>
     <button id="btnSetup">Setup</button>
   </div>
 
@@ -308,7 +335,10 @@
 
       <h3>Hidden photos</h3>
       <p class="help" id="hiddenInfo"></p>
-      <div class="row"><button id="btnUnhide">Show hidden photos again</button></div>
+      <div class="row">
+        <button id="btnReviewHidden" class="primary">Review hidden photos</button>
+        <button id="btnUnhide">Unhide all of them</button>
+      </div>
 
       <hr>
       <p class="help">Everything below here is the one-time Dropbox setup. Once it says connected, you can ignore it.</p>
@@ -992,6 +1022,7 @@ let timer = null;
 let paused = false;
 let usingLayerA = true;
 let lastDayBuilt = "";      // used to notice midnight for daily folder rotation
+let showingPhoto = null;    // the photo actually on screen right now
 let consecutiveFailures = 0;
 
 // The value stored when you pick "A different folder each day".
@@ -1015,9 +1046,32 @@ function hidePhoto(photo) {
   saveStore(store);
   return true;
 }
+function unhidePhoto(photo) {
+  if (!photo || !photo.id) return false;
+  const h = hiddenIds().filter(function (id) { return id !== photo.id; });
+  store.hidden = h;
+  saveStore(store);
+  return true;
+}
 function unhideAll() {
   delete store.hidden;
   saveStore(store);
+}
+
+// "Review hidden photos" flips the rotation round: instead of skipping the
+// hidden ones, it shows only those, so you can pick any back out.
+function isReviewingHidden() {
+  return !!store.reviewHidden;
+}
+function setReviewingHidden(on) {
+  if (on) store.reviewHidden = true; else delete store.reviewHidden;
+  saveStore(store);
+  updateReviewBar();
+}
+function updateReviewBar() {
+  const on = isReviewingHidden();
+  $("reviewBar").classList.toggle("showing", on);
+  $("btnHide").textContent = on ? "Unhide this" : "Hide this";
 }
 
 // Which folder today gets, when rotating one folder per day. Deterministic,
@@ -1066,6 +1120,22 @@ function buildOrder() {
   if (want === DAILY_FOLDER) want = dailyFolder();
   lastDayBuilt = todayKey();
 
+  // Reviewing hidden photos: show those and nothing else, ignoring the folder
+  // choice - otherwise you could not reach a hidden photo from another folder.
+  if (isReviewingHidden()) {
+    order = [];
+    photos.forEach(function (p, i) {
+      if (hidden.indexOf(p.id) !== -1) order.push(i);
+    });
+    if (order.length > 0) {
+      sortOrder();
+      orderIndex = -1;
+      return;
+    }
+    // Nothing left hidden - drop out of review mode rather than show a blank.
+    setReviewingHidden(false);
+  }
+
   // useFolder "" means every folder. Hidden photos are left out either way.
   function collect(useFolder) {
     const out = [];
@@ -1089,6 +1159,12 @@ function buildOrder() {
     order = photos.map(function (_, i) { return i; });
   }
 
+  sortOrder();
+  orderIndex = -1;
+}
+
+// Put the running order into the chosen sequence.
+function sortOrder() {
   const mode = photoOrderMode();
   if (mode === "shuffle") {
     // Fisher-Yates shuffle - a proper, evenly-random shuffle.
@@ -1101,7 +1177,6 @@ function buildOrder() {
   } else {
     order.sort(function (a, b) { return String(photos[b].when).localeCompare(String(photos[a].when)); });
   }
-  orderIndex = -1;
 }
 
 // Same idea for a video clip: wait until enough of it has arrived to play.
@@ -1206,6 +1281,7 @@ async function showPhotoAt(step) {
     usingLayerA = !usingLayerA;
   }
 
+  showingPhoto = photo;
   updateCornerLabel();
 
   // Warm up the next photo so the next fade is instant. Videos stream, so
@@ -1268,9 +1344,21 @@ function folderLabelFor(photo) {
   return parts[parts.length - 1];              // the folder it sits directly in
 }
 
+// What is actually on screen right now. Tracked directly rather than worked
+// out from the running order, because rebuilding that order resets the
+// position - which used to leave "Hide this" with nothing to act on.
 function currentPhoto() {
-  if (!order.length || orderIndex < 0) return null;
-  return photos[order[orderIndex]] || null;
+  return showingPhoto;
+}
+
+// Rebuild the running order but stay on the photo already showing.
+function rebuildKeepingPlace() {
+  const showing = showingPhoto;
+  buildOrder();
+  if (showing) {
+    const at = order.findIndex(function (i) { return photos[i] && photos[i].id === showing.id; });
+    if (at !== -1) orderIndex = at;
+  }
 }
 
 function timeNow() {
@@ -1397,13 +1485,7 @@ function startClockWatcher() {
   setInterval(function () {
     applySleepState();
     if (selectedFolder() === DAILY_FOLDER && todayKey() !== lastDayBuilt) {
-      const showing = currentPhoto();
-      buildOrder();
-      // Stay on the current photo if it is still in the new selection.
-      if (showing) {
-        const at = order.findIndex(function (i) { return photos[i] && photos[i].id === showing.id; });
-        if (at !== -1) orderIndex = at;
-      }
+      rebuildKeepingPlace();
       updateCornerLabel();
     }
   }, 20000);
@@ -1560,8 +1642,9 @@ function renderPickers() {
   const n = hiddenIds().length;
   $("hiddenInfo").textContent = n === 0
     ? "None hidden. Tap the screen while a photo you dislike is showing, then tap “Hide this”."
-    : n + (n === 1 ? " photo is" : " photos are") + " hidden. They stay in Dropbox - the frame just skips them.";
+    : n + (n === 1 ? " photo is" : " photos are") + " hidden. They stay in Dropbox - the frame just skips them. Review them to pick any back out one at a time.";
   $("btnUnhide").style.display = n === 0 ? "none" : "";
+  $("btnReviewHidden").style.display = n === 0 ? "none" : "";
 }
 
 // Apply the folder and order choices without touching anything else.
@@ -1611,6 +1694,22 @@ function saveSetupAndRestart() {
    -------------------------------------------------------------------------- */
 
 let controlsTimer = null;
+let lastHidden = null;        // the photo the Undo button would bring back
+let undoTimer = null;
+
+// After hiding, keep an Undo available for a little while - the Hide button
+// sits right next to Next, so mis-taps are easy.
+function offerUndoHide(photo) {
+  lastHidden = photo;
+  $("btnUndoHide").style.display = "";
+  clearTimeout(undoTimer);
+  undoTimer = setTimeout(hideUndoButton, 30000);
+}
+function hideUndoButton() {
+  lastHidden = null;
+  clearTimeout(undoTimer);
+  $("btnUndoHide").style.display = "none";
+}
 
 function showControls() {
   $("controls").classList.add("showing");
@@ -1640,14 +1739,47 @@ function wireUpTaps() {
 
   $("btnHide").onclick = function () {
     const p = currentPhoto();
+    if (!p) return;
+    if (isReviewingHidden()) {
+      // In review mode the same button puts a photo back.
+      if (unhidePhoto(p)) { buildOrder(); goNext(); showControls(); }
+      return;
+    }
     if (hidePhoto(p)) {
+      offerUndoHide(p);
       buildOrder();
       goNext();
       showControls();
     }
   };
+
+  $("btnUndoHide").onclick = function () {
+    if (lastHidden && unhidePhoto(lastHidden)) {
+      rebuildKeepingPlace();
+      hideUndoButton();
+      showControls();
+    }
+  };
+
+  $("btnDoneReview").onclick = function () {
+    setReviewingHidden(false);
+    buildOrder();
+    goNext();
+  };
+
+  $("btnReviewHidden").onclick = function () {
+    setReviewingHidden(true);
+    closeSetup();
+    buildOrder();
+    clearTimeout(timer);
+    paused = false;
+    hideMessage();
+    showPhotoAt(1);
+  };
+
   $("btnUnhide").onclick = function () {
     unhideAll();
+    setReviewingHidden(false);
     buildOrder();
     renderPickers();
   };
@@ -1808,6 +1940,7 @@ window.addEventListener("load", function () {
   applyFadeSetting();
   setUpCornerLabel();
   applySleepState();
+  updateReviewBar();
   startClockWatcher();
   wireUpTaps();
   keepAwake();

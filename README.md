@@ -190,11 +190,21 @@ the photos for five minutes.
 Windows that cross midnight (23:00 to 07:00) work fine. Set both times the same
 to switch it off.
 
-### Hiding a photo you do not like
+### Hiding a photo, and getting it back
 
 Tap the screen while it is showing, then tap **Hide this**. It disappears from
 the rotation immediately. The photo stays in Dropbox untouched - the frame just
-skips it. Setup shows how many are hidden and can restore them all.
+skips it.
+
+Three ways back:
+
+- **Undo hide** appears next to it for 30 seconds after you hide something.
+  For the times you meant to tap Next.
+- **Review hidden photos**, in Setup, turns the rotation inside out and shows
+  only the hidden ones. An orange banner across the top makes it obvious, and
+  **Hide this** becomes **Unhide this**. Tap **Done** when finished. Unhiding
+  the last one drops you out automatically.
+- **Unhide all of them**, in Setup, restores everything at once.
 
 ### Videos
 
