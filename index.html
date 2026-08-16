@@ -192,6 +192,9 @@
   }
   #controls.showing { opacity: 1; pointer-events: auto; }
   #controls button { font-size: 16px; padding: 11px 18px; }
+  /* While reviewing, this button unhides rather than hides. Colour it to
+     match the banner so the two are obviously the same mode. */
+  #btnHide.unhide { background: #a8552b; border-color: #a8552b; font-weight: 600; }
 
   /* Setup screen (Dropbox connection, folder, pasted links) */
   #setup {
@@ -276,8 +279,8 @@
 
   <!-- Shown only while looking back through hidden photos -->
   <div id="reviewBar">
-    <span>Hidden photos &mdash; tap <strong>Unhide this</strong> to bring one back</span>
-    <button id="btnDoneReview">Done</button>
+    <span>Reviewing <strong id="reviewCount"></strong> &mdash; tap <strong>Unhide this</strong> to bring one back</span>
+    <button id="btnDoneReview">Done reviewing</button>
   </div>
 
   <!-- Clock / date -->
@@ -1078,17 +1081,27 @@ function unhideAll() {
 // "Review hidden photos" flips the rotation round: instead of skipping the
 // hidden ones, it shows only those, so you can pick any back out.
 function isReviewingHidden() {
-  return !!store.reviewHidden;
+  return !!reviewingHidden;
 }
+// Deliberately NOT saved. Reviewing is something you do for a minute, not a
+// setting - leaving it switched on across restarts meant "Hide this" silently
+// read "Unhide this" long afterwards, and undid the very thing you wanted kept.
+let reviewingHidden = false;
+
 function setReviewingHidden(on) {
-  if (on) store.reviewHidden = true; else delete store.reviewHidden;
+  reviewingHidden = !!on;
+  delete store.reviewHidden;           // clear any left over from older versions
   saveStore(store);
   updateReviewBar();
 }
 function updateReviewBar() {
   const on = isReviewingHidden();
+  const n = hiddenIds().length;
   $("reviewBar").classList.toggle("showing", on);
+  $("reviewCount").textContent = n === 1 ? "1 hidden photo" : n + " hidden photos";
+  // Different word AND different colour, so it cannot be mistaken for Hide.
   $("btnHide").textContent = on ? "Unhide this" : "Hide this";
+  $("btnHide").classList.toggle("unhide", on);
 }
 
 // Which folder today gets, when rotating one folder per day. Deterministic,
@@ -1326,6 +1339,54 @@ function preload(url) {
   });
 }
 
+/* --------------------------------------------------------------------------
+   Going back
+
+   "Back" used to mean "one position earlier in the running order". That order
+   gets rebuilt whenever anything changes - hiding a photo, switching folder,
+   new photos arriving, or simply reaching the end with shuffle on - and a
+   rebuild moves everything around, so Back landed on something unrelated.
+
+   So instead we remember the photos actually put on screen, and Back walks
+   that list.
+   -------------------------------------------------------------------------- */
+
+let shownIds = [];         // ids of photos actually shown, oldest first
+let historyPos = -1;       // -1 means "at the newest photo"
+const MAX_HISTORY = 300;
+
+function rememberShown(photo) {
+  if (!photo || !photo.id) return;
+  if (shownIds[shownIds.length - 1] === photo.id) return;   // no repeats in a row
+  shownIds.push(photo.id);
+  if (shownIds.length > MAX_HISTORY) shownIds.shift();
+  historyPos = -1;
+}
+
+// A photo hidden since it was shown should not come back when stepping
+// through history - you hid it precisely so you would stop seeing it.
+// While reviewing hidden photos, the opposite applies, so nothing is skipped.
+function skipInHistory(photo) {
+  if (isReviewingHidden()) return false;
+  return hiddenIds().indexOf(photo.id) !== -1;
+}
+
+function photoById(id) {
+  for (let i = 0; i < photos.length; i++) {
+    if (photos[i].id === id) return photos[i];
+  }
+  return null;                     // deleted from Dropbox since
+}
+
+// Keep the running order pointing at whatever is on screen, so the next
+// automatic advance carries on sensibly from here.
+function syncOrderIndexTo(photo) {
+  const idx = photos.indexOf(photo);
+  if (idx === -1) return;
+  const at = order.indexOf(idx);
+  if (at !== -1) orderIndex = at;
+}
+
 async function showPhotoAt(step) {
   if (photos.length === 0) return;
   if (order.length === 0) buildOrder();
@@ -1336,7 +1397,13 @@ async function showPhotoAt(step) {
 
   const photo = photos[order[orderIndex]];
   if (!photo) return;
+  return displayPhoto(photo, true);
+}
 
+// Put one specific photo on screen. `record` is false when we are stepping
+// back and forth through history, so revisiting does not pile up more history.
+async function displayPhoto(photo, record) {
+  if (!photo) return;
   const playAsVideo = isVideo(photo);
 
   let url;
@@ -1401,6 +1468,7 @@ async function showPhotoAt(step) {
   }
 
   showingPhoto = photo;
+  if (record) rememberShown(photo);
   updateCornerLabel();
 
   // Warm up the next photo so the next fade is instant. Videos stream, so
@@ -1425,11 +1493,44 @@ async function showPhotoAt(step) {
 function scheduleNext(ms) {
   clearTimeout(timer);
   if (paused) return;
-  timer = setTimeout(function () { showPhotoAt(1); }, ms);
+  timer = setTimeout(advanceAuto, ms);
 }
 
-function goNext()  { clearTimeout(timer); showPhotoAt(1); }
-function goPrev()  { clearTimeout(timer); showPhotoAt(-1); }
+// The automatic advance always moves forward and leaves history behind.
+function advanceAuto() { historyPos = -1; showPhotoAt(1); }
+
+function goPrev() {
+  clearTimeout(timer);
+  if (shownIds.length < 2) return;                      // nothing behind us yet
+  const from = (historyPos === -1) ? shownIds.length - 1 : historyPos;
+  for (let p = from - 1; p >= 0; p--) {
+    const photo = photoById(shownIds[p]);
+    if (!photo) continue;                               // gone from Dropbox, skip it
+    if (skipInHistory(photo)) continue;                 // hidden since, do not resurrect it
+    historyPos = p;
+    syncOrderIndexTo(photo);
+    displayPhoto(photo, false);
+    return;
+  }
+}
+
+function goNext() {
+  clearTimeout(timer);
+  // If we have stepped back, Next retraces forward through what was shown.
+  if (historyPos !== -1) {
+    for (let p = historyPos + 1; p < shownIds.length; p++) {
+      const photo = photoById(shownIds[p]);
+      if (!photo) continue;
+      if (skipInHistory(photo)) continue;
+      historyPos = (p === shownIds.length - 1) ? -1 : p;
+      syncOrderIndexTo(photo);
+      displayPhoto(photo, false);
+      return;
+    }
+    historyPos = -1;
+  }
+  showPhotoAt(1);
+}
 function togglePause() {
   paused = !paused;
   $("btnPause").innerHTML = paused ? "&#9654;&nbsp; Play" : "&#10074;&#10074;&nbsp; Pause";
@@ -2072,6 +2173,7 @@ function handleRedirectCode() {
 window.addEventListener("load", function () {
   applyFadeSetting();
   setUpCornerLabel();
+  if (store.reviewHidden) { delete store.reviewHidden; saveStore(store); }
   applySleepState();
   updateReviewBar();
   startClockWatcher();
