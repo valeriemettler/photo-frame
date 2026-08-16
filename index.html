@@ -2036,10 +2036,27 @@ function renderPickers() {
   });
 
   // What the corner label shows
-  const nPlaces = Object.keys(placesByFile).length;
-  $("cornerHelp").textContent = nPlaces
-    ? nPlaces + " photos have a known location."
-    : "No locations file found in your Dropbox folder yet, so “Where it was taken” will show folder names.";
+  // Report how many of YOUR photos matched, not how many rows the file has.
+  // A spreadsheet can load perfectly and still match nothing, if the file
+  // names in Dropbox differ from the ones it was built from.
+  const nRows = Object.keys(placesByFile).length;
+  let nMatched = 0;
+  photos.forEach(function (p) {
+    if (placesByFile[(p.name || "").toLowerCase()]) nMatched++;
+  });
+
+  const help = $("cornerHelp");
+  if (!locationFiles.length) {
+    help.textContent = "No locations file in your Dropbox folder yet, so “Where it was taken” "
+      + "shows folder names. Add a file ending -photo-locations.csv to change that.";
+  } else if (nMatched === 0) {
+    help.textContent = "Found " + locationFiles.length + " locations file"
+      + (locationFiles.length === 1 ? "" : "s") + " with " + nRows + " rows, but none match your "
+      + "photos - the file names must be the same. Showing folder names instead.";
+  } else {
+    help.textContent = nMatched + " of " + photos.length + " photos have a known location"
+      + (nMatched < photos.length ? "; the rest show their folder name." : ".");
+  }
   renderPills($("cornerPicker"), [
     { value: "place",        label: "Where it was taken" },
     { value: "folder",       label: "Folder name" },
