@@ -52,6 +52,19 @@
   }
   .photo-layer.visible { opacity: 1; }
 
+  /* Quiet hours. Sits above the photos but below the setup screen, so you can
+     still tap through to Setup while it is asleep. */
+  #sleepScreen {
+    position: absolute;
+    inset: 0;
+    z-index: 22;
+    background: #000;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 2s ease-in-out;
+  }
+  #sleepScreen.showing { opacity: 1; }
+
   /* The corner label - folder name, clock, or file name. See CORNER_SHOWS. */
   #clock {
     position: absolute;
@@ -231,6 +244,13 @@
   <img id="layerA" class="photo-layer" alt="">
   <img id="layerB" class="photo-layer" alt="">
 
+  <!-- Video clips share the same stage and cross-fade the same way.
+       muted + playsinline are what let iPadOS start it without a tap. -->
+  <video id="layerV" class="photo-layer" muted playsinline preload="auto"></video>
+
+  <!-- Quiet hours: a plain black sheet over everything -->
+  <div id="sleepScreen"></div>
+
   <!-- Clock / date -->
   <div id="clock"><div class="time"></div><div class="date"></div></div>
 
@@ -250,6 +270,7 @@
     <button id="btnPrev">&#9664;&nbsp; Back</button>
     <button id="btnPause">&#10074;&#10074;&nbsp; Pause</button>
     <button id="btnNext">Next &nbsp;&#9654;</button>
+    <button id="btnHide">Hide this</button>
     <button id="btnSetup">Setup</button>
   </div>
 
@@ -272,6 +293,22 @@
       <div class="row" style="margin-top:18px">
         <button id="btnApply" class="primary">Show these photos</button>
       </div>
+
+      <h3>Quiet hours</h3>
+      <p class="help">The frame goes black overnight and comes back by itself. Tap the screen while it is dark to peek for a few minutes.</p>
+      <div id="sleepPicker" class="pills"></div>
+      <div class="row" id="sleepTimes">
+        <label class="help" style="display:flex; align-items:center; gap:8px; margin:0">
+          Dark at <input id="inpSleepStart" type="time" style="width:auto; margin:0">
+        </label>
+        <label class="help" style="display:flex; align-items:center; gap:8px; margin:0">
+          Back at <input id="inpSleepEnd" type="time" style="width:auto; margin:0">
+        </label>
+      </div>
+
+      <h3>Hidden photos</h3>
+      <p class="help" id="hiddenInfo"></p>
+      <div class="row"><button id="btnUnhide">Show hidden photos again</button></div>
 
       <hr>
       <p class="help">Everything below here is the one-time Dropbox setup. Once it says connected, you can ignore it.</p>
@@ -372,6 +409,34 @@ const CLOCK_24_HOUR = false;   // true = 14:30, false = 2:30 PM
 const NO_FOLDER_LABEL = "";
 
 
+/* --- Quiet hours: the frame goes dark overnight ------------------------- */
+
+// true = go black between the two times below, and come back by itself.
+// You can also change these from the Setup screen on the iPad.
+const SLEEP_ENABLED = true;
+
+// 24-hour clock, "HH:MM". Crossing midnight is fine.
+const SLEEP_START = "23:00";   // goes dark at
+const SLEEP_END   = "07:00";   // wakes up at
+
+// Tapping the screen during quiet hours wakes it for this many minutes,
+// then it goes back to sleep on its own.
+const SLEEP_PEEK_MINUTES = 5;
+
+
+/* --- Videos ------------------------------------------------------------- */
+
+// true = play video clips when they come round, muted, then move on.
+const PLAY_VIDEOS = true;
+
+// Don't sit on any one clip longer than this, in seconds.
+const MAX_VIDEO_SECONDS = 60;
+
+// iPhone "Live Photos" upload as a still plus a 2-3 second clip. Set this to
+// skip those stubs, or 0 to play everything.
+const SKIP_CLIPS_SHORTER_THAN_SECONDS = 0;
+
+
 /* --- Screen ------------------------------------------------------------- */
 
 // true = ask iPadOS to keep the screen on while the slideshow runs.
@@ -439,6 +504,23 @@ const IMAGE_EXTENSIONS = ["jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "
 // Apple's HEIC files need converting before Safari will reliably show them
 // from Dropbox, so we ask Dropbox for a JPEG version of these.
 const NEEDS_CONVERSION = ["heic", "heif", "tif", "tiff", "bmp"];
+
+// Video clips the iPad can play. Only used when PLAY_VIDEOS is true.
+const VIDEO_EXTENSIONS = ["mp4", "mov", "m4v"];
+
+function isVideoName(name) {
+  return VIDEO_EXTENSIONS.indexOf(fileExtension(name)) !== -1;
+}
+function isVideo(photo) {
+  return !!photo && isVideoName(photo.name);
+}
+
+// Is this file something we can put on screen at all?
+function isShowable(name) {
+  const ext = fileExtension(name);
+  if (IMAGE_EXTENSIONS.indexOf(ext) !== -1) return true;
+  return PLAY_VIDEOS && VIDEO_EXTENSIONS.indexOf(ext) !== -1;
+}
 
 // Formats Dropbox can make a smaller copy of, where the original would also
 // have worked. Used only when USE_SMALLER_PHOTOS is true.
@@ -728,7 +810,7 @@ async function dropboxListPhotos() {
 function collectPhotos(entries, into) {
   entries.forEach(function (e) {
     if (e[".tag"] !== "file") return;
-    if (IMAGE_EXTENSIONS.indexOf(fileExtension(e.name)) === -1) return;
+    if (!isShowable(e.name)) return;
     into.push({
       kind: "dropbox",
       id: e.id,
@@ -757,7 +839,7 @@ async function dropboxCheckForChanges() {
         return;
       }
       if (e[".tag"] !== "file") return;
-      if (IMAGE_EXTENSIONS.indexOf(fileExtension(e.name)) === -1) return;
+      if (!isShowable(e.name)) return;
       if (photos.some(function (p) { return p.id === e.id; })) return;
       photos.push({
         kind: "dropbox",
@@ -836,6 +918,13 @@ async function urlForPhoto(photo) {
 
   const ext = fileExtension(photo.name);
 
+  // Videos stream from the file itself; there is nothing to shrink.
+  if (isVideo(photo)) {
+    const v = await dbx("/files/get_temporary_link", { path: photo.path });
+    rememberLink(photo.path, v.link, Date.now() + 3.5 * 60 * 60 * 1000, false);
+    return v.link;
+  }
+
   // Some formats Safari cannot show at all, so a converted copy is the only
   // option. Others are converted purely to save data - for those, falling
   // back to the original is fine if the conversion is unavailable.
@@ -902,11 +991,51 @@ let orderIndex = -1;    // where we are in `order`
 let timer = null;
 let paused = false;
 let usingLayerA = true;
+let lastDayBuilt = "";      // used to notice midnight for daily folder rotation
 let consecutiveFailures = 0;
+
+// The value stored when you pick "A different folder each day".
+const DAILY_FOLDER = "__daily__";
 
 // Which folder is being shown. "" means all of them, mixed together.
 function selectedFolder() {
   return store.selectedFolder || "";
+}
+
+// Photos you have told the frame never to show again, by Dropbox file id.
+// Ids survive renaming and moving, so hiding sticks.
+function hiddenIds() {
+  return store.hidden || [];
+}
+function hidePhoto(photo) {
+  if (!photo || !photo.id) return false;
+  const h = hiddenIds().slice();
+  if (h.indexOf(photo.id) === -1) h.push(photo.id);
+  store.hidden = h;
+  saveStore(store);
+  return true;
+}
+function unhideAll() {
+  delete store.hidden;
+  saveStore(store);
+}
+
+// Which folder today gets, when rotating one folder per day. Deterministic,
+// so it does not jump about if the frame restarts.
+function dailyFolder() {
+  const list = availableFolders();
+  if (list.length === 0) return "";
+  const now = new Date();
+  const dayNumber = Math.floor(
+    (new Date(now.getFullYear(), now.getMonth(), now.getDate()) - new Date(2000, 0, 1)) / 86400000
+  );
+  return list[((dayNumber % list.length) + list.length) % list.length].name;
+}
+
+// Today, as a plain string, so we can notice midnight passing.
+function todayKey() {
+  const d = new Date();
+  return d.getFullYear() + "-" + (d.getMonth() + 1) + "-" + d.getDate();
 }
 
 // "shuffle" | "newest" | "oldest". Falls back to whatever SHUFFLE says in the
@@ -932,15 +1061,30 @@ function availableFolders() {
 }
 
 function buildOrder() {
-  const want = selectedFolder();
+  const hidden = hiddenIds();
+  let want = selectedFolder();
+  if (want === DAILY_FOLDER) want = dailyFolder();
+  lastDayBuilt = todayKey();
 
-  order = [];
-  photos.forEach(function (p, i) {
-    if (!want || folderLabelFor(p) === want) order.push(i);
-  });
+  // useFolder "" means every folder. Hidden photos are left out either way.
+  function collect(useFolder) {
+    const out = [];
+    photos.forEach(function (p, i) {
+      if (hidden.indexOf(p.id) !== -1) return;
+      if (useFolder && folderLabelFor(p) !== useFolder) return;
+      out.push(i);
+    });
+    return out;
+  }
 
-  // The chosen folder may have been renamed or emptied since. Rather than show
-  // a blank frame, fall back to everything.
+  order = collect(want);
+
+  // The chosen folder may have been renamed or emptied since - widen to
+  // everything rather than show a blank frame.
+  if (order.length === 0 && want) order = collect("");
+
+  // And if literally everything has been hidden, show it all again rather
+  // than leave nothing at all.
   if (order.length === 0) {
     order = photos.map(function (_, i) { return i; });
   }
@@ -958,6 +1102,28 @@ function buildOrder() {
     order.sort(function (a, b) { return String(photos[b].when).localeCompare(String(photos[a].when)); });
   }
   orderIndex = -1;
+}
+
+// Same idea for a video clip: wait until enough of it has arrived to play.
+// There is only one video element, so this loads straight into it.
+function preloadVideo(url) {
+  return new Promise(function (resolve, reject) {
+    const v = $("layerV");
+    let settled = false;
+    const done = function (ok) {
+      if (settled) return;
+      settled = true;
+      v.onloadeddata = null;
+      v.onerror = null;
+      ok ? resolve(url) : reject(new Error("The video could not be loaded."));
+    };
+    v.onloadeddata = function () { done(true); };
+    v.onerror = function () { done(false); };
+    v.src = url;
+    v.load();
+    // A clip that never reports back should not stall the whole frame.
+    setTimeout(function () { done(v.readyState >= 2); }, 15000);
+  });
 }
 
 // Load an image fully before we fade to it, so the fade is never half-drawn.
@@ -982,10 +1148,12 @@ async function showPhotoAt(step) {
   const photo = photos[order[orderIndex]];
   if (!photo) return;
 
+  const playAsVideo = isVideo(photo);
+
   let url;
   try {
     url = await urlForPhoto(photo);
-    await preload(url);
+    await (playAsVideo ? preloadVideo(url) : preload(url));
   } catch (e) {
     // One bad photo should not stop the frame. Skip it and try the next.
     consecutiveFailures++;
@@ -1008,22 +1176,55 @@ async function showPhotoAt(step) {
   consecutiveFailures = 0;
   hideMessage();
 
-  const incoming = usingLayerA ? $("layerB") : $("layerA");
-  const outgoing = usingLayerA ? $("layerA") : $("layerB");
-  incoming.src = url;
-  incoming.classList.add("visible");
-  outgoing.classList.remove("visible");
-  usingLayerA = !usingLayerA;
+  const vid = $("layerV");
+
+  // A Live Photo uploads as a still plus a two-second stub. Skip those if
+  // SKIP_CLIPS_SHORTER_THAN_SECONDS is set.
+  if (playAsVideo && SKIP_CLIPS_SHORTER_THAN_SECONDS > 0
+      && isFinite(vid.duration) && vid.duration > 0
+      && vid.duration < SKIP_CLIPS_SHORTER_THAN_SECONDS) {
+    scheduleNext(50);
+    return;
+  }
+
+  if (playAsVideo) {
+    // The video shares the stage with the photo layers, so fade both out.
+    $("layerA").classList.remove("visible");
+    $("layerB").classList.remove("visible");
+    vid.classList.add("visible");
+    try { vid.currentTime = 0; } catch (e) { /* not seekable yet */ }
+    const started = vid.play();
+    if (started && started.catch) started.catch(function () { /* autoplay refused */ });
+  } else {
+    const incoming = usingLayerA ? $("layerB") : $("layerA");
+    const outgoing = usingLayerA ? $("layerA") : $("layerB");
+    incoming.src = url;
+    incoming.classList.add("visible");
+    outgoing.classList.remove("visible");
+    vid.classList.remove("visible");
+    try { vid.pause(); } catch (e) {}
+    usingLayerA = !usingLayerA;
+  }
 
   updateCornerLabel();
 
-  // Warm up the next photo in the background so the next fade is instant.
+  // Warm up the next photo so the next fade is instant. Videos stream, so
+  // there is nothing useful to pre-fetch for those.
   const nextPos = order[(orderIndex + 1) % order.length];
-  if (photos[nextPos]) {
-    urlForPhoto(photos[nextPos]).then(function (u) { const i = new Image(); i.src = u; }).catch(function () {});
+  const nextPhoto = photos[nextPos];
+  if (nextPhoto && !isVideo(nextPhoto)) {
+    urlForPhoto(nextPhoto).then(function (u) { const i = new Image(); i.src = u; }).catch(function () {});
   }
 
-  scheduleNext(SECONDS_PER_PHOTO * 1000);
+  if (playAsVideo) {
+    // Stay on the clip for its own length, within reason.
+    const secs = (isFinite(vid.duration) && vid.duration > 0)
+      ? Math.min(vid.duration, MAX_VIDEO_SECONDS)
+      : SECONDS_PER_PHOTO;
+    scheduleNext(secs * 1000 + 400);
+  } else {
+    scheduleNext(SECONDS_PER_PHOTO * 1000);
+  }
 }
 
 function scheduleNext(ms) {
@@ -1135,6 +1336,81 @@ function setUpCornerLabel() {
 
 
 /* --------------------------------------------------------------------------
+   Quiet hours - the frame goes black overnight and comes back by itself
+   -------------------------------------------------------------------------- */
+
+let asleep = false;
+let peekUntil = 0;          // tapping during quiet hours wakes it briefly
+
+// "23:00" -> 1380. Returns null if it is not a time.
+function minutesOfDay(hhmm) {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(hhmm || "").trim());
+  if (!m) return null;
+  const h = parseInt(m[1], 10), min = parseInt(m[2], 10);
+  if (h > 23 || min > 59) return null;
+  return h * 60 + min;
+}
+
+function sleepSettings() {
+  return {
+    on:   store.sleepOn !== undefined ? store.sleepOn : SLEEP_ENABLED,
+    from: store.sleepStart || SLEEP_START,
+    to:   store.sleepEnd   || SLEEP_END
+  };
+}
+
+function isQuietHoursNow() {
+  const s = sleepSettings();
+  if (!s.on) return false;
+  const from = minutesOfDay(s.from), to = minutesOfDay(s.to);
+  if (from === null || to === null || from === to) return false;
+  const now = new Date();
+  const mins = now.getHours() * 60 + now.getMinutes();
+  // A window like 23:00 to 07:00 runs past midnight, so it wraps around.
+  return (from < to) ? (mins >= from && mins < to) : (mins >= from || mins < to);
+}
+
+function applySleepState() {
+  const shouldSleep = isQuietHoursNow() && Date.now() >= peekUntil;
+  if (shouldSleep === asleep) return;
+  asleep = shouldSleep;
+  $("sleepScreen").classList.toggle("showing", asleep);
+
+  if (asleep) {
+    clearTimeout(timer);
+    try { $("layerV").pause(); } catch (e) {}
+  } else if (photos.length) {
+    scheduleNext(500);
+  }
+}
+
+// Tap during quiet hours to see the photos for a few minutes.
+function peekDuringQuietHours() {
+  if (!isQuietHoursNow()) return;
+  peekUntil = Date.now() + SLEEP_PEEK_MINUTES * 60 * 1000;
+  applySleepState();
+}
+
+// One slow heartbeat handles going to sleep, waking up, and noticing midnight
+// when the folder rotates daily.
+function startClockWatcher() {
+  setInterval(function () {
+    applySleepState();
+    if (selectedFolder() === DAILY_FOLDER && todayKey() !== lastDayBuilt) {
+      const showing = currentPhoto();
+      buildOrder();
+      // Stay on the current photo if it is still in the new selection.
+      if (showing) {
+        const at = order.findIndex(function (i) { return photos[i] && photos[i].id === showing.id; });
+        if (at !== -1) orderIndex = at;
+      }
+      updateCornerLabel();
+    }
+  }, 20000);
+}
+
+
+/* --------------------------------------------------------------------------
    Keeping the screen awake
 
    The Screen Wake Lock API works in Safari on iPadOS 16.4 and newer, so it
@@ -1232,6 +1508,10 @@ function renderPickers() {
   const folders = availableFolders();
 
   const folderOptions = [{ value: "", label: "All folders" }];
+  // Only offer daily rotation when there is more than one folder to rotate.
+  if (folders.length > 1) {
+    folderOptions.push({ value: DAILY_FOLDER, label: "A different one each day" });
+  }
   folders.forEach(function (f) {
     folderOptions.push({ value: f.name, label: f.name, count: f.count });
   });
@@ -1260,6 +1540,28 @@ function renderPickers() {
     saveStore(store);
     renderPickers();
   });
+
+  // Quiet hours
+  const sleep = sleepSettings();
+  renderPills($("sleepPicker"), [
+    { value: "on",  label: "Go dark overnight" },
+    { value: "off", label: "Always on" }
+  ], sleep.on ? "on" : "off", function (value) {
+    store.sleepOn = (value === "on");
+    saveStore(store);
+    renderPickers();
+    applySleepState();
+  });
+  $("sleepTimes").style.display = sleep.on ? "flex" : "none";
+  $("inpSleepStart").value = sleep.from;
+  $("inpSleepEnd").value = sleep.to;
+
+  // Hidden photos
+  const n = hiddenIds().length;
+  $("hiddenInfo").textContent = n === 0
+    ? "None hidden. Tap the screen while a photo you dislike is showing, then tap “Hide this”."
+    : n + (n === 1 ? " photo is" : " photos are") + " hidden. They stay in Dropbox - the frame just skips them.";
+  $("btnUnhide").style.display = n === 0 ? "none" : "";
 }
 
 // Apply the folder and order choices without touching anything else.
@@ -1327,6 +1629,7 @@ function wireUpTaps() {
     if ($("setup").classList.contains("showing")) return;
     if ($("controls").classList.contains("showing")) hideControls(); else showControls();
     keepAwake();                          // a tap is a good moment to re-request this
+    peekDuringQuietHours();               // dark right now? show the photos briefly
   });
 
   $("btnPrev").onclick   = function () { goPrev(); showControls(); };
@@ -1334,6 +1637,26 @@ function wireUpTaps() {
   $("btnPause").onclick  = function () { togglePause(); showControls(); };
   $("btnSetup").onclick  = openSetup;
   $("btnApply").onclick  = applyPickersAndPlay;
+
+  $("btnHide").onclick = function () {
+    const p = currentPhoto();
+    if (hidePhoto(p)) {
+      buildOrder();
+      goNext();
+      showControls();
+    }
+  };
+  $("btnUnhide").onclick = function () {
+    unhideAll();
+    buildOrder();
+    renderPickers();
+  };
+  $("inpSleepStart").onchange = function () {
+    store.sleepStart = this.value; saveStore(store); applySleepState();
+  };
+  $("inpSleepEnd").onchange = function () {
+    store.sleepEnd = this.value; saveStore(store); applySleepState();
+  };
   $("msgButton").onclick = openSetup;
 
   $("btnConnect").onclick    = dropboxStartConnect;
@@ -1484,6 +1807,8 @@ function handleRedirectCode() {
 window.addEventListener("load", function () {
   applyFadeSetting();
   setUpCornerLabel();
+  applySleepState();
+  startClockWatcher();
   wireUpTaps();
   keepAwake();
   showDiagnostics();

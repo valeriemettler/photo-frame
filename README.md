@@ -181,6 +181,31 @@ Drop photos in there. That is the whole workflow.
 - Works with: jpg, jpeg, png, gif, webp, heic, heif, avif, bmp, tif, tiff.
 - Videos are ignored.
 
+### Quiet hours
+
+Setup has a **Quiet hours** section. The frame fades to black at your chosen
+time and comes back on its own in the morning. Tap the dark screen to peek at
+the photos for five minutes.
+
+Windows that cross midnight (23:00 to 07:00) work fine. Set both times the same
+to switch it off.
+
+### Hiding a photo you do not like
+
+Tap the screen while it is showing, then tap **Hide this**. It disappears from
+the rotation immediately. The photo stays in Dropbox untouched - the frame just
+skips it. Setup shows how many are hidden and can restore them all.
+
+### Videos
+
+Video clips in the folder play automatically, muted, then the frame moves on.
+`mp4`, `mov` and `m4v`. A clip plays for its own length, up to
+`MAX_VIDEO_SECONDS`.
+
+If you upload iPhone Live Photos you get both a still and a two-second clip.
+Set `SKIP_CLIPS_SHORTER_THAN_SECONDS` to `3` to skip those stubs, or leave it
+at `0` to play everything.
+
 ### Choosing a folder and an order, from the iPad
 
 Tap the screen, tap **Setup**, and the first two things are:
@@ -225,6 +250,12 @@ GitHub, then reload the page on the iPad.
 | `NO_FOLDER_LABEL` | Label for photos not inside any sub-folder | `""` |
 | `KEEP_SCREEN_AWAKE` | Ask iPadOS to keep the screen on | `true` |
 | `CHECK_FOR_NEW_PHOTOS_MINUTES` | How often to look for new photos | `10` |
+| `SLEEP_ENABLED` | Go black overnight. Also settable on the iPad | `true` |
+| `SLEEP_START` / `SLEEP_END` | Quiet hours, 24-hour `"HH:MM"` | `"23:00"` / `"07:00"` |
+| `SLEEP_PEEK_MINUTES` | How long a tap wakes it during quiet hours | `5` |
+| `PLAY_VIDEOS` | Play video clips found in the folder | `true` |
+| `MAX_VIDEO_SECONDS` | Longest a single clip holds the screen | `60` |
+| `SKIP_CLIPS_SHORTER_THAN_SECONDS` | Skip Live Photo stubs. `0` plays everything | `0` |
 | `USE_SMALLER_PHOTOS` | Download 2048-pixel copies instead of full-size originals. Looks identical on an iPad, uses far less data | `true` |
 | `DROPBOX_FOLDER_PATH` | Leave empty for the app's own folder | `""` |
 
