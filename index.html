@@ -196,6 +196,7 @@
   /* Nine buttons no longer fit one row in portrait, so let it wrap. */
   #controls { flex-wrap: wrap; justify-content: center; max-width: 94vw; }
   #btnNote.recording { background: #c0392b; border-color: #c0392b; font-weight: 600; }
+  #btnFav.on { background: #b8860b; border-color: #b8860b; font-weight: 600; }
 
   /* Small "this photo has a note" tag. Sits in the corner opposite the label. */
   #noteMark {
@@ -450,6 +451,7 @@
     <button id="btnNext">Next &nbsp;&#9654;</button>
     <button id="btnHide">Hide this</button>
     <button id="btnUndoHide" style="display:none">Undo hide</button>
+    <button id="btnFav">&#9734; Favorite</button>
     <!-- A real link, not a button: iPadOS blocks window.open from a Home
          Screen app, which is how the Dropbox sign-in used to fail silently. -->
     <a id="btnMap" class="btn" target="_blank" rel="noopener" style="display:none">Open in Maps</a>
@@ -509,6 +511,10 @@
 
       <h3>Show</h3>
       <div id="mediaPicker" class="pills"></div>
+
+      <h3>Favorites</h3>
+      <p class="help">Tap <strong>&#9734; Favorite</strong> on the frame to mark a photo or clip. Favorites are kept in Dropbox (in the <code>_notes</code> folder), so they survive resets and show on any iPad using this folder.</p>
+      <div id="favPicker" class="pills"></div>
 
       <h3>Order</h3>
       <div id="orderPicker" class="pills"></div>
@@ -696,6 +702,10 @@ const DICTATION = true;
 
 // Longest single note, in seconds. Recording stops by itself after this.
 const MAX_NOTE_SECONDS = 180;
+
+// The list of favorite photos, kept in the same _notes folder. One photo per
+// line (folder/name without the extension), so it is easy to read or edit.
+const FAVORITES_FILE = "favorites.txt";
 
 
 /* --- Videos ------------------------------------------------------------- */
@@ -1163,6 +1173,11 @@ async function dropboxCheckForChanges() {
   }
 
   saveStore(store);
+  if (favoritesFile && favoritesFile.rev !== favoritesLoadedRev) {
+    // Edited on another device (or the file was just created there).
+    await loadFavoritesFromDropbox();
+    if (favoritesOnly()) changed = true;
+  }
   return changed;
 }
 
@@ -1443,29 +1458,36 @@ function buildOrder() {
 
   // useFolder "" means every folder, media "all" means stills and clips.
   // Hidden photos are left out whatever else is asked for.
-  function collect(useFolder, media) {
+  function collect(useFolder, media, favs) {
     const out = [];
     photos.forEach(function (p, i) {
       if (hidden.indexOf(p.id) !== -1) return;
       if (useFolder && folderLabelFor(p) !== useFolder) return;
       if (media === "videos" && !isVideo(p)) return;
       if (media === "photos" && isVideo(p)) return;
+      if (favs && !isFavorite(p)) return;
       out.push(i);
     });
     return out;
   }
 
   const media = mediaFilter();
-  order = collect(want, media);
+  const favs = favoritesOnly();
+  order = collect(want, media, favs);
+
+  // Favorites only, but none in this folder or of this kind? Look everywhere
+  // for favorites first; only if there are none at all does the filter give way.
+  if (order.length === 0 && favs) order = collect("", "all", true);
+  if (order.length === 0 && favs) order = collect(want, media, false);
 
   // The chosen folder may have been renamed or emptied since - widen to
   // every folder before giving up on what was asked for.
-  if (order.length === 0 && want) order = collect("", media);
+  if (order.length === 0 && want) order = collect("", media, false);
 
   // Still nothing? Then there are no clips (or no stills) anywhere, so honour
   // the folder rather than the media filter - a frame showing the wrong thing
   // beats a frame showing nothing.
-  if (order.length === 0 && media !== "all") order = collect(want, "all");
+  if (order.length === 0 && media !== "all") order = collect(want, "all", false);
 
   // And if literally everything has been hidden, show it all again rather
   // than leave nothing at all.
@@ -1758,6 +1780,7 @@ async function displayPhoto(photo, record) {
   updateCornerLabel();
   updateMapButton();
   updateNoteMark();
+  updateFavButton();
 
   // Warm up the next photo so the next fade is instant. Videos stream, so
   // there is nothing useful to pre-fetch for those.
@@ -2348,6 +2371,17 @@ function renderPickers() {
     renderPickers();
   });
 
+  // Favorites: everything, or just the ones you have starred.
+  const favN = favoriteCount();
+  renderPills($("favPicker"), [
+    { value: "all",       label: "Everything" },
+    { value: "favorites", label: "Favorites only", count: favN }
+  ], favoritesOnly() ? "favorites" : "all", function (value) {
+    store.favoritesOnly = value === "favorites";
+    saveStore(store);
+    renderPickers();
+  });
+
   renderPills($("orderPicker"), [
     { value: "shuffle", label: "Shuffle" },
     { value: "newest",  label: "Newest first" },
@@ -2533,6 +2567,7 @@ function hideUndoButton() {
 
 function showControls() {
   updateMapButton();
+  updateFavButton();
   $("controls").classList.add("showing");
   clearTimeout(controlsTimer);
   controlsTimer = setTimeout(hideControls, 5000);
@@ -2558,6 +2593,16 @@ function wireUpTaps() {
   $("btnPause").onclick  = function () { togglePause(); showControls(); };
   $("btnSetup").onclick  = openSetup;
   $("btnApply").onclick  = applyPickersAndPlay;
+
+  $("btnFav").onclick = function () {
+    const p = currentPhoto();
+    if (!p) return;
+    toggleFavorite(p);
+    updateFavButton();
+    toast(isFavorite(p) ? "Added to favorites." : "Removed from favorites.");
+    if (favoritesOnly()) rebuildKeepingPlace();     // the running order just changed
+    showControls();
+  };
 
   // Voice notes and the Info card
   $("btnNote").onclick = function () { if (rec) stopNote(true); else startNote(); };
@@ -2694,6 +2739,10 @@ function noteFromEntry(e) {
   const root = notesRootLower();
   if (path.indexOf(root) !== 0) return false;
   const rel = path.slice(root.length);
+  if (rel === FAVORITES_FILE.toLowerCase()) {
+    favoritesFile = { path: path, rev: e.rev || "" };
+    return true;
+  }
   const m = /^(.+)\.(\d{8}-\d{6})\.([a-z0-9]+)$/.exec(rel);
   if (!m) return true;                       // inside _notes but not one of ours - ignore it
   const key = m[1], stamp = m[2], ext = m[3];
@@ -2733,6 +2782,7 @@ async function saveNoteText(note, text) {
 function forgetNotePath(pathLower) {
   const root = notesRootLower();
   if ((pathLower || "").indexOf(root) !== 0) return false;
+  if (favoritesFile && favoritesFile.path === pathLower) { favoritesFile = null; return true; }
   Object.keys(notesByKey).forEach(function (key) {
     notesByKey[key] = notesByKey[key].filter(function (n) {
       if (n.audioPath === pathLower) delete n.audioPath;
@@ -2841,6 +2891,118 @@ function speechRecognitionClass() {
 }
 function canRecordHere() {
   return !!(window.MediaRecorder && navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+}
+
+
+/* --- Favorites ---------------------------------------------------------- */
+//
+// Marked on the frame, kept on the iPad for instant use, and written through
+// to Dropbox (_notes/favorites.txt) so they outlive a reset and reach any
+// other iPad on the same folder. If Dropbox cannot be written to right now,
+// the change waits on the iPad and goes up on the next chance.
+
+let favoritesFile = null;         // { path, rev } once seen in the Dropbox listing
+let favoritesLoadedRev = null;    // the rev we last read, so we re-read only real changes
+let favoritesSaveTimer = null;
+
+// The same key the notes use, so a favorite and its notes stay together.
+function favoriteKeyFor(photo) {
+  if (!photo) return "";
+  return photo.kind === "dropbox" ? noteKeyFor(photo) : (photo.url || "");
+}
+function favoriteKeys() { return store.favorites || []; }
+function isFavorite(photo) {
+  const k = favoriteKeyFor(photo);
+  return !!k && favoriteKeys().indexOf(k) !== -1;
+}
+function favoritesOnly() { return !!store.favoritesOnly; }
+
+function setFavorite(photo, on) {
+  const k = favoriteKeyFor(photo);
+  if (!k) return false;
+  const list = favoriteKeys().filter(function (x) { return x !== k; });
+  if (on) list.push(k);
+  store.favorites = list;
+  if (photo.kind === "dropbox") store.favoritesDirty = true;
+  saveStore(store);
+  scheduleFavoritesSave();
+  return true;
+}
+function toggleFavorite(photo) { return setFavorite(photo, !isFavorite(photo)); }
+
+// How many favorites the current folder and Show choice would give.
+function favoriteCount() {
+  const hidden = hiddenIds();
+  let want = selectedFolder();
+  if (want === DAILY_FOLDER) want = dailyFolder();
+  const media = mediaFilter();
+  let n = 0;
+  photos.forEach(function (p) {
+    if (hidden.indexOf(p.id) !== -1) return;
+    if (want && folderLabelFor(p) !== want) return;
+    if (media === "videos" && !isVideo(p)) return;
+    if (media === "photos" && isVideo(p)) return;
+    if (isFavorite(p)) n++;
+  });
+  return n;
+}
+
+function updateFavButton() {
+  const b = $("btnFav");
+  const p = currentPhoto();
+  const on = isFavorite(p);
+  b.innerHTML = on ? "&#9733; Favorited" : "&#9734; Favorite";
+  b.classList.toggle("on", on);
+  b.style.display = p ? "" : "none";
+}
+
+// Quick taps get bundled into one small upload a moment later.
+function scheduleFavoritesSave() {
+  clearTimeout(favoritesSaveTimer);
+  favoritesSaveTimer = setTimeout(saveFavoritesToDropbox, 1500);
+}
+
+function favoritesFilePath() {
+  return (folderPath() || "") + "/" + NOTES_FOLDER + "/" + FAVORITES_FILE;
+}
+
+async function saveFavoritesToDropbox() {
+  if (!store.favoritesDirty || !store.refreshToken) return;
+  const keys = favoriteKeys().filter(function (k) { return !/^https?:/i.test(k); });
+  const text = "# Photo frame favorites - one photo per line: folder/name without the extension\n"
+             + keys.join("\n") + (keys.length ? "\n" : "");
+  try {
+    const saved = await dbxUpload(favoritesFilePath(), new Blob([text], { type: "text/plain" }), "overwrite");
+    favoritesFile = { path: (saved && saved.path_lower) || favoritesFilePath().toLowerCase(), rev: (saved && saved.rev) || "" };
+    favoritesLoadedRev = favoritesFile.rev;
+    delete store.favoritesDirty;
+    saveStore(store);
+  } catch (e) {
+    // Stay dirty; the next toggle or the next start-up tries again.
+    console.log("[PhotoFrame] favorites not saved yet: " + e.message);
+  }
+}
+
+// Read the list from Dropbox. Local unsaved changes win until they are up.
+async function loadFavoritesFromDropbox() {
+  if (!store.refreshToken) return;
+  if (store.favoritesDirty) { saveFavoritesToDropbox(); return; }
+  if (!favoritesFile) return;
+  if (favoritesLoadedRev !== null && favoritesLoadedRev === favoritesFile.rev) return;
+  try {
+    const link = await dbx("/files/get_temporary_link", { path: favoritesFile.path });
+    const res = await fetch(link.link);
+    if (!res.ok) return;
+    const remote = (await res.text()).split(/\r?\n/).map(function (l) { return l.trim(); })
+      .filter(function (l) { return l && l[0] !== "#"; });
+    const local = favoriteKeys().filter(function (k) { return /^https?:/i.test(k); });   // pasted-link ones stay local
+    store.favorites = remote.concat(local);
+    saveStore(store);
+    favoritesLoadedRev = favoritesFile.rev;
+    updateFavButton();
+  } catch (e) {
+    console.log("[PhotoFrame] could not read favorites: " + e.message);
+  }
 }
 
 
@@ -3359,6 +3521,7 @@ async function start() {
 
   hideMessage();
   await loadLocationFiles();      // where each photo was taken, if we know
+  await loadFavoritesFromDropbox();
   buildOrder();
   showPhotoAt(1);
   startWatchingForNewPhotos();

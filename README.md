@@ -225,6 +225,22 @@ clips before choosing to watch only those.
 Asking for videos in a folder that has none shows that folder's photos rather
 than an empty frame.
 
+### Favorites
+
+Tap the screen, then **☆ Favorite**, to star the photo or clip on screen (tap
+again to unstar). Setup has a **Favorites** row - **Everything** or **Favorites
+only**, with a count for the folder and Show choice you have selected. Asking
+for favorites where there are none in that folder shows favorites from every
+folder; if nothing is starred at all, the filter gives way rather than leave a
+blank frame.
+
+Favorites are kept in Dropbox as `_notes/favorites.txt` - one photo per line,
+folder/name without the extension - so they survive a reset and reach any other
+iPad using the same folder. The change is made on the iPad at once and written
+up a moment later; if Dropbox cannot be reached right then, it goes up on the
+next chance. Edit the file in Dropbox and the frame picks it up on its next
+check. Photos from pasted links can be starred too, but those stay on the iPad.
+
 ### How photos change
 
 Setup has a **How photos change** row. Tap one and the next photo uses it.
@@ -338,6 +354,7 @@ Tap the screen, tap **Setup**, and the first two things are:
 
 - **Photos from** - every folder inside your Dropbox folder, plus **All
   folders** to mix them together. The number on each is how many photos it has.
+- **Favorites** - Everything, or Favorites only (see Favorites above).
 - **Order** - Shuffle, Newest first, or Oldest first.
 
 Tap what you want, then **Show these photos**. The choice is remembered on that
@@ -370,6 +387,7 @@ GitHub, then reload the page on the iPad.
 | `NOTES_FOLDER` | Sub-folder where voice notes and transcripts are kept | `"_notes"` |
 | `DICTATION` | `true` = type out what you say while recording a note. Also settable on the iPad | `true` |
 | `MAX_NOTE_SECONDS` | Longest single voice note | `180` |
+| `FAVORITES_FILE` | Name of the favorites list inside the notes folder | `"favorites.txt"` |
 | `SHUFFLE` | `true` = random order, `false` = newest first | `true` |
 | `TRANSITION` | `"fade"`, `"dip"`, `"slide"`, `"zoom"`, `"blur"` or `"random"`. Also settable on the iPad | `"fade"` |
 | `FADE_SECONDS` | Length of the cross-fade. `0` = instant | `1.5` |
