@@ -69,6 +69,7 @@
     pointer-events: none;
   }
   .bg-layer.visible { opacity: 1; }
+  .bg-layer.sharp { filter: brightness(0.7); transform: none; }
   /* Opacity, transform and filter are driven from JavaScript so the different
      transitions can share one set of layers. The class is only a marker for
      which layer is on screen. */
@@ -516,6 +517,8 @@
       <div class="row">
         <button id="btnInfoRecord" class="primary">Record a note</button>
         <a id="btnInfoSafari" class="btn" target="_blank" rel="noopener">Open in Safari</a>
+        <a id="btnInfoDay" class="btn" target="_blank" rel="noopener">Map of this day</a>
+        <button id="btnInfoBackdrop">Use behind photos</button>
         <button id="btnInfoClose">Close</button>
       </div>
     </div>
@@ -552,7 +555,7 @@
       <div id="sortByPicker" class="pills"></div>
 
       <h3>Behind the photo</h3>
-      <p class="help">A portrait photo on a landscape screen leaves space at the sides. Fill it with a soft blur of the same photo, or leave it black.</p>
+      <p class="help">A portrait photo on a landscape screen leaves space at the sides. Fill it with a soft blur of the same photo, leave it black, or use one picture of your own - open any photo's Info card and tap <strong>Use behind photos</strong>.</p>
       <div id="blurPicker" class="pills"></div>
 
       <h3>Swipe</h3>
@@ -663,7 +666,7 @@
 // Which build this is. Shown at the bottom of Setup under "What the frame
 // currently has", so you can tell whether the iPad has the latest one.
 // Bumped with every change that reaches the iPad.
-const APP_VERSION = "1.7 - blur, swipe, date taken";
+const APP_VERSION = "1.8 - day maps, chosen backdrop";
 
 
 /* --- How the slideshow behaves ----------------------------------------- */
@@ -681,8 +684,11 @@ const SHUFFLE = true;
 // to when it was added; "added" = when it landed in Dropbox. Settable on the iPad.
 const SORT_BY = "taken";
 
-// true = fill the space beside a photo with a soft blur of itself instead of
-// black. Settable on the iPad.
+// What fills the space beside a photo: "blur" = a soft blur of the photo
+// itself, "black" = plain black, "photo" = one picture of your choice, kept
+// behind everything (pick it with "Use behind photos" on a photo's Info card).
+// Settable on the iPad. BLUR_BACKGROUND is the older true/false form.
+const BACKDROP = "blur";
 const BLUR_BACKGROUND = true;
 
 // true = swipe left/right changes photos. Settable on the iPad.
@@ -1189,7 +1195,8 @@ function collectPhotos(entries, into) {
       // read "iceland 2025". path_display keeps the real capitalisation.
       display: e.path_display || e.path_lower,
       when: e.client_modified || e.server_modified || "",
-      taken: timeTakenFrom(e)
+      taken: timeTakenFrom(e),
+      geo: geoFrom(e)
     });
   });
 }
@@ -1198,6 +1205,13 @@ function collectPhotos(entries, into) {
 function timeTakenFrom(e) {
   const mi = e.media_info && e.media_info.metadata;
   return (mi && mi.time_taken) ? mi.time_taken : "";
+}
+// And where, if the file carried GPS.
+function geoFrom(e) {
+  const mi = e.media_info && e.media_info.metadata;
+  const loc = mi && mi.location;
+  if (!loc || typeof loc.latitude !== "number" || typeof loc.longitude !== "number") return null;
+  return { lat: loc.latitude, lon: loc.longitude };
 }
 
 // Cheap check for photos added or removed since the last look.
@@ -1233,7 +1247,8 @@ async function dropboxCheckForChanges() {
         path: e.path_lower,
         display: e.path_display || e.path_lower,
         when: e.client_modified || e.server_modified || "",
-        taken: timeTakenFrom(e)
+        taken: timeTakenFrom(e),
+        geo: geoFrom(e)
       });
       changed = true;
     });
@@ -1527,6 +1542,128 @@ function takenKnownCount() {
   return n;
 }
 
+
+/* --------------------------------------------------------------------------
+   Map of this day
+
+   Every located photo taken on the same day as the one on screen, grouped
+   into stops (photos within about fifty metres of each other, in time order),
+   handed to day.html inside its web address. The spreadsheet's position wins
+   over what Dropbox read from the file, same as for dates.
+   -------------------------------------------------------------------------- */
+
+const STOP_RADIUS_METRES = 50;
+
+function photoGeo(photo) {
+  if (!photo) return null;
+  const p = placesByFile[(photo.name || "").toLowerCase()];
+  if (p && isFinite(p.lat) && isFinite(p.lon) && (p.lat !== 0 || p.lon !== 0)) return { lat: p.lat, lon: p.lon };
+  return photo.geo || null;
+}
+// "2025-06-14" for the day a photo was taken, or "" if nothing knows.
+function photoDay(photo) {
+  const k = takenKey(photo);
+  return k ? k.slice(0, 10) : "";
+}
+function photoClock(photo) {
+  const k = takenKey(photo);
+  const m = /T(\d{2}):(\d{2})/.exec(k || "");
+  if (!m) return "";
+  let h = parseInt(m[1], 10);
+  const min = m[2];
+  if (CLOCK_24_HOUR) return m[1] + ":" + min;
+  const suffix = h >= 12 ? " PM" : " AM";
+  h = h % 12; if (h === 0) h = 12;
+  return h + ":" + min + suffix;
+}
+function metresBetween(a, b) {
+  const R = 6371000, toRad = Math.PI / 180;
+  const dLat = (b.lat - a.lat) * toRad, dLon = (b.lon - a.lon) * toRad;
+  const x = Math.sin(dLat / 2) * Math.sin(dLat / 2)
+          + Math.cos(a.lat * toRad) * Math.cos(b.lat * toRad) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  return 2 * R * Math.asin(Math.sqrt(x));
+}
+function dayLabel(day) {
+  const d = new Date(day + "T12:00:00");
+  if (isNaN(d)) return day;
+  return d.toLocaleDateString([], { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+}
+
+// The located photos of one day, in time order.
+function photosOnDay(day) {
+  return photos.filter(function (p) { return p.kind === "dropbox" && photoDay(p) === day && !!photoGeo(p); })
+    .sort(function (a, b) { return takenKey(a).localeCompare(takenKey(b)); });
+}
+// Photos that day with no position, so the map can say so.
+function unplacedOnDay(day) {
+  return photos.filter(function (p) { return photoDay(p) === day && !photoGeo(p); }).length;
+}
+
+// Group a day's photos into stops. Walking through in time order, a photo
+// joins the current stop if it is within STOP_RADIUS_METRES of it; otherwise
+// it starts a new one. Coming back to a place later makes a new stop, which
+// is what a route needs.
+function dayStops(day, currentPhoto_) {
+  const list = photosOnDay(day);
+  const stops = [];
+  let cur = null;
+  list.forEach(function (p) {
+    const g = photoGeo(p);
+    if (cur && metresBetween(cur, g) <= STOP_RADIUS_METRES) {
+      cur.photos.push(p);
+      // Keep the centre honest as photos join.
+      cur.lat = cur.lat + (g.lat - cur.lat) / cur.photos.length;
+      cur.lon = cur.lon + (g.lon - cur.lon) / cur.photos.length;
+    } else {
+      cur = { lat: g.lat, lon: g.lon, photos: [p] };
+      stops.push(cur);
+    }
+  });
+  let from = -1;
+  stops.forEach(function (st, i) {
+    const first = st.photos[0], last = st.photos[st.photos.length - 1];
+    st.t0 = photoClock(first);
+    st.t1 = photoClock(last);
+    st.n = st.photos.length;
+    // Best name available among the stop's photos.
+    st.name = ""; st.sub = "";
+    for (let k = 0; k < st.photos.length && !st.name; k++) {
+      st.name = placeLabelFor(st.photos[k]);
+      st.sub = placeSubLabelFor(st.photos[k]);
+    }
+    if (!st.name) st.name = folderLabelFor(first) || "";
+    st.rep = first;
+    if (currentPhoto_ && st.photos.some(function (p) { return p.id === currentPhoto_.id; })) from = i;
+  });
+  return { stops: stops, from: from };
+}
+
+// Build the day.html link for the photo on screen. Returns "" if the day has
+// no located photos at all.
+async function dayLinkFor(photo) {
+  const day = photoDay(photo);
+  if (!day) return "";
+  const grouped = dayStops(day, photo);
+  if (!grouped.stops.length) return "";
+  // One picture link per stop, all at once.
+  await Promise.all(grouped.stops.map(async function (st) {
+    try {
+      const t = await dbx("/files/get_temporary_link", { path: st.rep.path });
+      st.thumb = t.link;
+    } catch (e) { st.thumb = ""; }
+  }));
+  const data = {
+    v: 1, day: day, label: dayLabel(day), from: grouped.from,
+    folder: folderLabelFor(photo) || "",
+    unplaced: unplacedOnDay(day),
+    stops: grouped.stops.map(function (st) {
+      return { lat: +st.lat.toFixed(6), lon: +st.lon.toFixed(6), t0: st.t0, t1: st.t1, n: st.n,
+               name: st.name, sub: st.sub, thumb: st.thumb || "", file: st.rep.name };
+    })
+  };
+  return location.origin + location.pathname.replace(/[^\/]*$/, "") + "day.html#d=" + encodeNoteData(data);
+}
+
 // Every folder that actually has photos in it, with a count for each.
 // Worked out from the photos already loaded, so it costs nothing extra.
 function availableFolders() {
@@ -1669,9 +1806,20 @@ function transitionMode() {
 
 // Someone who has asked their iPad to reduce motion should not get things
 // flying across the screen.
-function blurBackgroundOn() {
-  return store.blurBackground === undefined ? !!BLUR_BACKGROUND : !!store.blurBackground;
+// "blur" | "black" | "photo"
+function backdropMode() {
+  if (store.backdropMode) return store.backdropMode;
+  if (store.blurBackground !== undefined) return store.blurBackground ? "blur" : "black";
+  return BACKDROP || (BLUR_BACKGROUND ? "blur" : "black");
 }
+function blurBackgroundOn() { return backdropMode() === "blur"; }
+function setBackdropMode(mode) {
+  store.backdropMode = mode;
+  delete store.blurBackground;
+  saveStore(store);
+}
+// The picture chosen for "photo" mode: { kind, path, url, name }.
+function chosenBackdrop() { return store.backdropPhoto || null; }
 function swipeOn() {
   return store.swipe === undefined ? !!SWIPE : !!store.swipe;
 }
@@ -1687,6 +1835,7 @@ function showBackdrop(url, secs) {
   const outgoing = visibleBg;
   incoming.style.transition = "none";
   incoming.classList.remove("visible");
+  delete incoming.dataset.chosen;
   incoming.src = url;
   void incoming.offsetWidth;
   incoming.style.transition = "opacity " + secs + "s ease-in-out";
@@ -1704,11 +1853,31 @@ function hideBackdrop(secs) {
   });
   visibleBg = null;
 }
-// Setup switched it off (or on) mid-show.
+// Put the chosen picture behind everything, once; later photos leave it be.
+let chosenBackdropUrl = "";
+async function ensureChosenBackdrop(secs) {
+  const c = chosenBackdrop();
+  if (!c) { setBackdropMode("blur"); applyBlurSetting(); return; }
+  if (visibleBg && visibleBg.dataset.chosen === "1" && visibleBg.classList.contains("visible")) return;
+  try {
+    if (!chosenBackdropUrl) chosenBackdropUrl = await urlForPhoto(c);
+  } catch (e) {
+    toast("The chosen backdrop photo could not be loaded - using the soft blur.");
+    setBackdropMode("blur"); applyBlurSetting(); return;
+  }
+  [$("bgA"), $("bgB")].forEach(function (el) { el.classList.add("sharp"); });
+  showBackdrop(chosenBackdropUrl, secs || 0.3);
+  if (visibleBg) visibleBg.dataset.chosen = "1";
+}
+// Setup (or the Info card) changed the choice mid-show.
 function applyBlurSetting() {
-  if (!blurBackgroundOn()) { hideBackdrop(0.3); return; }
+  const mode = backdropMode();
+  if (mode === "photo") { chosenBackdropUrl = ""; ensureChosenBackdrop(0.3); return; }
+  [$("bgA"), $("bgB")].forEach(function (el) { el.classList.remove("sharp"); delete el.dataset.chosen; });
+  if (mode === "black") { hideBackdrop(0.3); return; }
   const p = currentPhoto();
   if (p && !isVideo(p) && visibleLayer && visibleLayer.src) showBackdrop(visibleLayer.src, 0.3);
+  else hideBackdrop(0.3);
 }
 
 function prefersLessMotion() {
@@ -1922,9 +2091,14 @@ async function displayPhoto(photo, record) {
     if (outgoing !== vid) { try { vid.pause(); } catch (e) {} }
   }
 
-  // The soft backdrop follows stills; clips get plain black behind them.
-  if (blurBackgroundOn() && !playAsVideo) showBackdrop(url, fadeSecondsNow());
-  else if (playAsVideo) hideBackdrop(fadeSecondsNow());
+  // The backdrop: the soft blur follows stills (clips get black behind them);
+  // a chosen picture just stays put; black is black.
+  const bmode = backdropMode();
+  if (bmode === "blur") {
+    if (playAsVideo) hideBackdrop(fadeSecondsNow()); else showBackdrop(url, fadeSecondsNow());
+  } else if (bmode === "photo") {
+    ensureChosenBackdrop(fadeSecondsNow());
+  }
 
   // Two clips back to back land on the same element - nothing to transition.
   if (incoming !== outgoing) {
@@ -2103,6 +2277,8 @@ function loadPlacesFromCsv(text) {
   const iDate  = col("date");
   const iTime  = col("time");
   const iMaps  = col("google maps", "map", "maps");
+  const iLat   = col("latitude", "lat");
+  const iLon   = col("longitude", "lon", "lng", "long");
 
   const at = function (r, i) { return (i >= 0 && r[i] !== undefined) ? r[i].trim() : ""; };
   let n = 0;
@@ -2120,7 +2296,9 @@ function loadPlacesFromCsv(text) {
       country: at(row, iCountry),
       date:    at(row, iDate),
       time:    at(row, iTime),
-      maps:    at(row, iMaps)
+      maps:    at(row, iMaps),
+      lat:     parseFloat(at(row, iLat)),
+      lon:     parseFloat(at(row, iLon))
     };
     n++;
   }
@@ -2545,12 +2723,14 @@ function renderPickers() {
     renderPickers();
   });
 
-  renderPills($("blurPicker"), [
+  const bdOptions = [
     { value: "blur",  label: "Soft blur" },
     { value: "black", label: "Black" }
-  ], blurBackgroundOn() ? "blur" : "black", function (value) {
-    store.blurBackground = value === "blur";
-    saveStore(store);
+  ];
+  const chosen = chosenBackdrop();
+  if (chosen) bdOptions.push({ value: "photo", label: "My photo: " + (chosen.name || "").replace(/\.[^.]+$/, "") });
+  renderPills($("blurPicker"), bdOptions, backdropMode(), function (value) {
+    setBackdropMode(value);
     applyBlurSetting();
     renderPickers();
   });
@@ -2806,6 +2986,16 @@ function wireUpTaps() {
   $("btnInfo").onclick       = function () { if (infoOpen) closeInfo(); else openInfo(); };
   $("btnInfoClose").onclick  = function () { closeInfo(); };
   $("btnInfoRecord").onclick = function () { closeInfo(); startNote(); };
+  $("btnInfoBackdrop").onclick = function () {
+    const p = infoCtx && infoCtx.photo;
+    if (!p) return;
+    if (isVideo(p)) { toast("Pick a photo, not a clip, for the backdrop."); return; }
+    store.backdropPhoto = { kind: p.kind, path: p.path, url: p.url, name: p.name };
+    setBackdropMode("photo");
+    chosenBackdropUrl = "";
+    applyBlurSetting();
+    toast("This photo now sits behind the others. Change it in Setup > Behind the photo.");
+  };
   $("noteMark").onclick      = function () { if (!rec && !infoOpen) openInfo(); };
 
   $("btnHide").onclick = function () {
@@ -3597,6 +3787,24 @@ async function openInfo() {
   }));
 
   await refreshSafariLink();
+  await refreshDayLink();
+}
+
+// "Map of this day": dimmed when nothing that day has a location.
+async function refreshDayLink() {
+  const link = $("btnInfoDay");
+  const c = infoCtx;
+  if (!c) return;
+  link.removeAttribute("href");
+  link.classList.add("off");
+  link.style.opacity = "0.5";
+  if (c.photo.kind !== "dropbox") { link.style.opacity = ""; return; }
+  try {
+    const href = await dayLinkFor(c.photo);
+    if (!infoCtx || infoCtx.photo !== c.photo) return;      // the card moved on
+    if (href) { link.href = href; link.classList.remove("off"); }
+  } catch (e) { /* stays dimmed */ }
+  link.style.opacity = "";
 }
 
 // The Safari page carries everything it needs in its address (fresh links

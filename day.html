@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Where we went that day</title>
+<!--
+  The "Map of this day" page. Opened from the photo frame's Info card, in
+  Safari. Everything it shows travels inside its own web address (the part
+  after #), so it needs no sign-in and no server of its own: it draws a street
+  map from OpenStreetMap, asks a free routing service for the roads between
+  the stops (falling back to straight lines if that is unavailable), and the
+  stop pictures are Dropbox links that last about four hours.
+-->
+<link rel="stylesheet" href="vendor/leaflet.css">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #0e0e0e; color: #fff;
+               font-family: -apple-system, "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif; }
+  #page { display: grid; grid-template-rows: auto 1fr auto; height: 100%; }
+  #top { padding: calc(env(safe-area-inset-top) + 12px) 18px 10px; }
+  #top h1 { margin: 0; font-size: 22px; font-weight: 600; }
+  #top .sub { font-size: 14px; opacity: 0.65; margin-top: 3px; line-height: 1.5; }
+  #top .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+  .pill, .btn {
+    -webkit-appearance: none; appearance: none;
+    background: rgba(255,255,255,0.10); border: 1px solid rgba(255,255,255,0.2);
+    color: #fff; font: inherit; font-size: 14px; padding: 8px 14px; border-radius: 999px;
+    cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 6px;
+  }
+  .pill.on { background: #2f7de1; border-color: #2f7de1; font-weight: 600; }
+  .btn.primary { background: #2f7de1; border-color: #2f7de1; }
+  .btn.off { opacity: 0.35; pointer-events: none; }
+  #routeNote { font-size: 13px; opacity: 0.6; }
+  #main { display: grid; grid-template-columns: 1fr 340px; min-height: 0; }
+  #map { min-height: 300px; background: #1a1a1a; }
+  #list { overflow-y: auto; -webkit-overflow-scrolling: touch; border-left: 1px solid rgba(255,255,255,0.1); }
+  @media (max-width: 760px) {
+    #main { grid-template-columns: 1fr; grid-template-rows: 58vh auto; }
+    #list { border-left: 0; border-top: 1px solid rgba(255,255,255,0.1); }
+  }
+  .stop { display: flex; gap: 12px; padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.08); cursor: pointer; }
+  .stop:hover, .stop.here { background: rgba(255,255,255,0.06); }
+  .stop .num { flex: 0 0 30px; height: 30px; border-radius: 50%; background: #2f7de1; color: #fff;
+               display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; }
+  .stop.here .num { background: #d99a1c; }
+  .stop .what { min-width: 0; }
+  .stop .when { font-size: 13px; opacity: 0.6; }
+  .stop .name { font-size: 16px; font-weight: 600; margin: 2px 0; }
+  .stop .more { font-size: 13px; opacity: 0.6; }
+  .stop img { width: 64px; height: 64px; object-fit: cover; border-radius: 8px; flex: 0 0 64px; background: #222; margin-left: auto; }
+  #foot { padding: 8px 18px calc(env(safe-area-inset-bottom) + 10px); font-size: 12px; opacity: 0.5; line-height: 1.5; }
+  #foot a { color: inherit; }
+  /* Leaflet marker: a numbered dot. The stop you came from is amber and larger. */
+  .dot { width: 28px; height: 28px; margin-left: -14px; margin-top: -14px; border-radius: 50%;
+         background: #2f7de1; color: #fff; border: 2px solid #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+         display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; }
+  .dot.here { width: 36px; height: 36px; margin-left: -18px; margin-top: -18px; background: #d99a1c; font-size: 15px; }
+  .leaflet-popup-content { margin: 10px 12px; font-size: 14px; color: #111; line-height: 1.4; }
+  .leaflet-popup-content img { display: block; width: 220px; max-width: 70vw; height: auto; border-radius: 8px; margin-top: 8px; background: #ddd; }
+  .leaflet-container { font-family: inherit; }
+  #empty { padding: 40px; text-align: center; opacity: 0.7; font-size: 17px; }
+</style>
+</head>
+<body>
+<div id="page">
+  <div id="top">
+    <h1 id="title">Where we went</h1>
+    <div class="sub" id="sub"></div>
+    <div class="row">
+      <span style="font-size:13px; opacity:.6">Route:</span>
+      <button class="pill" data-mode="auto">Auto</button>
+      <button class="pill" data-mode="foot">Walking</button>
+      <button class="pill" data-mode="car">Driving</button>
+      <button class="pill" data-mode="straight">Straight lines</button>
+      <span id="routeNote"></span>
+      <a id="gmaps" class="btn" target="_blank" rel="noopener" style="margin-left:auto">Open in Google Maps</a>
+    </div>
+  </div>
+  <div id="main">
+    <div id="map"></div>
+    <div id="list"></div>
+  </div>
+  <div id="foot">
+    Map data &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors.
+    Roads by <a href="https://routing.openstreetmap.de/about.html" target="_blank" rel="noopener">OSRM at FOSSGIS</a>, when reachable.
+    Opened from the photo frame; the pictures use temporary links that stop working after about four hours -
+    open it again from the frame's Info button for fresh ones.
+  </div>
+</div>
+<script src="vendor/leaflet.js"></script>
+<script>
+"use strict";
+const $ = function (id) { return document.getElementById(id); };
+
+function decodeData(str) {
+  const b64 = str.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((str.length + 3) % 4);
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return JSON.parse(new TextDecoder().decode(bytes));
+}
+
+// Great-circle distance in metres.
+function metres(a, b) {
+  const R = 6371000, toRad = Math.PI / 180;
+  const dLat = (b.lat - a.lat) * toRad, dLon = (b.lon - a.lon) * toRad;
+  const s = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * toRad) * Math.cos(b.lat * toRad) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(s));
+}
+
+let data = null;
+try {
+  const h = location.hash || "";
+  if (h.indexOf("#d=") === 0) data = decodeData(h.slice(3));
+} catch (e) { data = null; }
+
+if (!data || !data.stops || !data.stops.length) {
+  $("main").innerHTML = '<div id="empty">Nothing to map. Open this page from a photo\'s Info card on the frame.</div>';
+  $("main").style.gridTemplateColumns = "1fr";
+} else {
+  build(data);
+}
+
+function build(d) {
+  const stops = d.stops;
+  $("title").textContent = d.label || d.day || "That day";
+  const parts = [];
+  parts.push(stops.length === 1 ? "1 stop" : stops.length + " stops");
+  const total = stops.reduce(function (n, s) { return n + (s.n || 0); }, 0);
+  parts.push(total === 1 ? "1 photo" : total + " photos");
+  if (d.folder) parts.push(d.folder);
+  if (d.unplaced) parts.push(d.unplaced + " more photo" + (d.unplaced === 1 ? "" : "s") + " that day had no location");
+  $("sub").textContent = parts.join(" · ");
+  document.title = (d.label || d.day || "That day") + " - where we went";
+
+  const map = L.map("map", { zoomControl: true, attributionControl: false });
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19 }).addTo(map);
+  const latlngs = stops.map(function (s) { return [s.lat, s.lon]; });
+  const bounds = L.latLngBounds(latlngs);
+  map.fitBounds(bounds.pad(0.25), { maxZoom: 16 });
+
+  // Markers and the side list.
+  const markers = [];
+  const list = $("list");
+  stops.forEach(function (s, i) {
+    const here = i === d.from;
+    const icon = L.divIcon({ className: "", html: '<div class="dot' + (here ? " here" : "") + '">' + (i + 1) + "</div>", iconSize: [0, 0] });
+    const m = L.marker([s.lat, s.lon], { icon: icon, zIndexOffset: here ? 1000 : 0 }).addTo(map);
+    const when = s.t0 && s.t1 && s.t0 !== s.t1 ? s.t0 + " to " + s.t1 : (s.t0 || "");
+    let html = "<b>" + escapeHtml(s.name || ("Stop " + (i + 1))) + "</b><br>" + escapeHtml(when)
+             + (s.n ? " · " + s.n + " photo" + (s.n === 1 ? "" : "s") : "") + (here ? " · <b>this photo</b>" : "");
+    if (s.sub) html += "<br><span style='opacity:.7'>" + escapeHtml(s.sub) + "</span>";
+    if (s.thumb) html += '<img loading="lazy" src="' + escapeAttr(s.thumb) + '" alt="">';
+    m.bindPopup(html, { maxWidth: 260 });
+    markers.push(m);
+
+    const row = document.createElement("div");
+    row.className = "stop" + (here ? " here" : "");
+    row.innerHTML = '<div class="num">' + (i + 1) + '</div><div class="what"><div class="when"></div><div class="name"></div><div class="more"></div></div>';
+    row.querySelector(".when").textContent = when + (here ? " · this photo" : "");
+    row.querySelector(".name").textContent = s.name || ("Stop " + (i + 1));
+    row.querySelector(".more").textContent = [s.sub, s.n ? s.n + " photo" + (s.n === 1 ? "" : "s") : ""].filter(Boolean).join(" · ");
+    if (s.thumb) { const im = document.createElement("img"); im.loading = "lazy"; im.src = s.thumb; im.alt = ""; row.appendChild(im); }
+    row.onclick = function () { map.panTo([s.lat, s.lon]); m.openPopup(); };
+    list.appendChild(row);
+  });
+  if (d.from >= 0 && markers[d.from]) setTimeout(function () { markers[d.from].openPopup(); }, 400);
+
+  // Google Maps: origin, up to 8 waypoints, destination. More stops than that
+  // and we keep the first, the last and an even spread between.
+  (function () {
+    if (stops.length < 2) { $("gmaps").href = "https://www.google.com/maps/search/?api=1&query=" + stops[0].lat + "," + stops[0].lon; return; }
+    let pick = stops.slice();
+    let trimmed = false;
+    if (pick.length > 10) {
+      trimmed = true;
+      const out = [pick[0]];
+      for (let k = 1; k <= 8; k++) out.push(pick[Math.round(k * (pick.length - 1) / 9)]);
+      out.push(pick[pick.length - 1]);
+      pick = out;
+    }
+    const ll = function (s) { return s.lat + "," + s.lon; };
+    const url = "https://www.google.com/maps/dir/?api=1&origin=" + ll(pick[0]) + "&destination=" + ll(pick[pick.length - 1])
+              + (pick.length > 2 ? "&waypoints=" + pick.slice(1, -1).map(ll).join("|") : "")
+              + "&travelmode=" + (walkingDay(stops) ? "walking" : "driving");
+    $("gmaps").href = url;
+    if (trimmed) $("gmaps").textContent = "Open in Google Maps (10 of " + stops.length + " stops)";
+  })();
+
+  // The route line. Straight lines at once; then ask for roads and swap it in.
+  let line = L.polyline(latlngs, { color: "#d99a1c", weight: 3, opacity: 0.85, dashArray: "6 8" }).addTo(map);
+  let mode = "auto";
+  const pills = Array.from(document.querySelectorAll(".pill[data-mode]"));
+  pills.forEach(function (p) { p.onclick = function () { mode = p.dataset.mode; paint(); route(); }; });
+  function paint() { pills.forEach(function (p) { p.classList.toggle("on", p.dataset.mode === mode); }); }
+  paint();
+  route();
+
+  async function route() {
+    const want = mode === "auto" ? (walkingDay(stops) ? "foot" : "car") : mode;
+    if (want === "straight" || stops.length < 2) {
+      map.removeLayer(line);
+      line = L.polyline(latlngs, { color: "#d99a1c", weight: 3, opacity: 0.85, dashArray: "6 8" }).addTo(map);
+      $("routeNote").textContent = stops.length < 2 ? "" : "Straight lines between stops.";
+      return;
+    }
+    $("routeNote").textContent = "Finding roads…";
+    const coords = stops.map(function (s) { return s.lon + "," + s.lat; }).join(";");
+    const servers = [
+      "https://routing.openstreetmap.de/routed-" + want + "/route/v1/driving/",
+      want === "car" ? "https://router.project-osrm.org/route/v1/driving/" : null
+    ].filter(Boolean);
+    for (let i = 0; i < servers.length; i++) {
+      try {
+        const ctl = new AbortController();
+        const t = setTimeout(function () { ctl.abort(); }, 9000);
+        const res = await fetch(servers[i] + coords + "?overview=full&geometries=geojson&steps=false", { signal: ctl.signal });
+        clearTimeout(t);
+        if (!res.ok) continue;
+        const j = await res.json();
+        if (!j.routes || !j.routes[0] || !j.routes[0].geometry) continue;
+        const pts = j.routes[0].geometry.coordinates.map(function (c) { return [c[1], c[0]]; });
+        map.removeLayer(line);
+        line = L.polyline(pts, { color: "#d99a1c", weight: 4, opacity: 0.9 }).addTo(map);
+        const km = (j.routes[0].distance || 0) / 1000;
+        const mins = Math.round((j.routes[0].duration || 0) / 60);
+        $("routeNote").textContent = (want === "foot" ? "Walking" : "Driving") + " route: about " + km.toFixed(1) + " km"
+                                   + (mins ? ", " + (mins >= 60 ? Math.floor(mins / 60) + " h " + (mins % 60) + " min" : mins + " min") : "");
+        return;
+      } catch (e) { /* try the next server */ }
+    }
+    $("routeNote").textContent = "Roads unavailable right now - showing straight lines.";
+  }
+}
+
+// A day where no hop between stops is over 3 km is a walking day.
+function walkingDay(stops) {
+  for (let i = 1; i < stops.length; i++) {
+    if (metres(stops[i - 1], stops[i]) > 3000) return false;
+  }
+  return true;
+}
+function escapeHtml(s) { return String(s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+function escapeAttr(s) { return escapeHtml(s); }
+</script>
+</body>
+</html>

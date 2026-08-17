@@ -241,13 +241,42 @@ up a moment later; if Dropbox cannot be reached right then, it goes up on the
 next chance. Edit the file in Dropbox and the frame picks it up on its next
 check. Photos from pasted links can be starred too, but those stay on the iPad.
 
-### Behind the photo: soft blur or black
+### Map of this day
+
+Every photo's Info card has a **Map of this day** button. It opens Safari on a
+street map (OpenStreetMap, free, no account) of every located photo taken that
+day: one numbered marker per stop, in time order, with the time span, the place
+name where known, how many photos were taken there, and a small picture when
+you tap it. The stop the photo came from is amber. A line traces the day; the
+page asks a free routing service (OSRM at FOSSGIS) for the actual roads -
+walking if no hop is over 3 km, driving otherwise, or pick yourself - and
+falls back to straight lines if that service is busy. **Open in Google Maps**
+hands the stops to the Google Maps app as a route (it takes ten at most, so a
+very busy day gets an even spread).
+
+Where the positions come from: the locations spreadsheet first (latitude and
+longitude columns), otherwise the GPS Dropbox read out of the file. Photos
+within about 50 metres of each other become one stop; going back somewhere
+later in the day makes a new stop. Photos that day with no position are
+counted on the page but not drawn. Days with nothing located leave the button
+dimmed. As with the note page, everything the map needs travels inside the
+link, so nothing of yours is stored anywhere - only map tiles and the roads
+request go out. Picture links last about four hours.
+
+The page is `day.html`, next to `index.html`, with the Leaflet map library
+vendored under `vendor/` (BSD licence, `vendor/LEAFLET-LICENSE.txt`).
+
+### Behind the photo: soft blur, black, or a photo of your choice
 
 A portrait photo on the landscape screen (or the other way round) leaves space
 at the sides. Setup has a **Behind the photo** row: **Soft blur** fills that
 space with a blurred, darkened copy of the same photo - the picture itself is
-untouched and uncropped - or **Black** for plain bars. Clips always get black.
-The file default is `BLUR_BACKGROUND`.
+untouched and uncropped; **Black** for plain bars; or **My photo** - one
+picture of your own kept behind everything. To choose it, open any photo's
+Info card and tap **Use behind photos**; a third pill then appears in Setup
+with its name, and you can switch between the three at will (the choice is
+remembered). With Soft blur, clips get black behind them; a chosen photo stays
+put for clips too. The file default is `BACKDROP`.
 
 ### Swipe
 
@@ -424,7 +453,7 @@ GitHub, then reload the page on the iPad.
 
 | Setting | What it does | Default |
 |---|---|---|
-| `APP_VERSION` | Which build this is; shown at the bottom of Setup. Bump it with every change | `"1.7 - blur, swipe, date taken"` |
+| `APP_VERSION` | Which build this is; shown at the bottom of Setup. Bump it with every change | `"1.8 - day maps, chosen backdrop"` |
 | `SECONDS_PER_PHOTO` | How long each photo stays up. Also settable on the iPad | `12` |
 | `NOTES_FOLDER` | Sub-folder where voice notes and transcripts are kept | `"_notes"` |
 | `DICTATION` | `true` = type out what you say while recording a note. Also settable on the iPad | `true` |
@@ -433,7 +462,7 @@ GitHub, then reload the page on the iPad.
 | `HIDDEN_FILE` | Name of the hidden-photos list inside the notes folder | `"hidden.txt"` |
 | `SHUFFLE` | `true` = random order, `false` = newest first | `true` |
 | `SORT_BY` | `"taken"` or `"added"` - what newest/oldest go by. Also settable on the iPad | `"taken"` |
-| `BLUR_BACKGROUND` | `true` = soft blur beside photos instead of black. Also settable on the iPad | `true` |
+| `BACKDROP` | `"blur"`, `"black"` or `"photo"` - what fills the space beside a photo. Also settable on the iPad | `"blur"` |
 | `SWIPE` | `true` = swipe left/right changes photos. Also settable on the iPad | `true` |
 | `TRANSITION` | `"fade"`, `"dip"`, `"slide"`, `"zoom"`, `"blur"` or `"random"`. Also settable on the iPad | `"fade"` |
 | `FADE_SECONDS` | Length of the cross-fade. `0` = instant | `1.5` |
@@ -577,3 +606,4 @@ and open it again (or reload the page in Safari).
 | 1.5 | Hidden list kept in Dropbox (`_notes/hidden.txt`), like favorites |
 | 1.6 | Control bar is a fixed grid of slots (buttons that do not apply are dimmed, not removed, so nothing shifts); confirmations show at the top of the screen |
 | 1.7 | Soft-blur background behind photos, swipe to change photos, and newest/oldest by date taken - each with a Setup switch |
+| 1.8 | Map of this day (Info card): stops, times, pictures and a road route on OpenStreetMap; a photo of your choice as the backdrop |
