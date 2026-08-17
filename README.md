@@ -206,6 +206,16 @@ python3 ~/projects/photo-locations/build_locations_csv.py ~/Documents/YourFolder
 Then upload the resulting `.csv` into the Dropbox folder alongside the photos.
 Choose what the corner shows under **Label in the corner** in Setup.
 
+### Opening the map for a photo
+
+When a photo has a location, an **Open in Maps** button appears in the tap bar
+next to Hide. It opens that spot in a new Safari tab - the business listing if
+the place has a name, a pin on the exact coordinates if it does not.
+
+It is a real link rather than a button, because iPadOS blocks scripted
+window-opening from a Home Screen app. Photos with no location simply do not
+show the button.
+
 ### Showing only videos
 
 Setup has a **Show** row: Everything, Photos only, or Videos only. Each carries
