@@ -276,6 +276,13 @@ web address (a Safari tab cannot see this app's Dropbox connection - Safari
 and Home Screen apps keep separate storage), using temporary Dropbox links
 that last about four hours; open it again from Info for fresh ones.
 
+Dictation gets words wrong. In the Info card each note has an **Edit** button:
+fix the text and tap **Save**, and the `.txt` in Dropbox is replaced. A voice-only
+note shows **Add text** instead. Saving an empty box removes the transcript file
+and the note goes back to voice only. You can also edit the `.txt` files
+straight in Dropbox from any device - the frame notices the change on its next
+check and re-reads them. (The Safari page is read-only.)
+
 The slideshow stands still while you record or read, and carries on when you
 finish. Recording stops by itself after `MAX_NOTE_SECONDS` (three minutes).
 

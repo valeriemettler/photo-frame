@@ -276,6 +276,21 @@
   #info .note .text { font-size: 17px; line-height: 1.55; white-space: pre-wrap; }
   #info .note .text.none { opacity: 0.55; font-style: italic; }
   #info audio { width: 100%; margin-top: 8px; }
+  #info .note .tools { display: flex; gap: 8px; margin-top: 8px; }
+  #info .note .tools button { font-size: 14px; padding: 7px 14px; }
+  #info textarea {
+    width: 100%;
+    min-height: 96px;
+    font-size: 16px;                  /* 16px stops iOS from zooming in */
+    font-family: inherit;
+    line-height: 1.5;
+    padding: 10px 12px;
+    border-radius: 11px;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+    resize: vertical;
+  }
   #info .row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
   #info .row a.btn { text-decoration: none; display: inline-flex; align-items: center; }
 
@@ -2685,9 +2700,33 @@ function noteFromEntry(e) {
   const list = notesByKey[key] || (notesByKey[key] = []);
   let note = list.find(function (n) { return n.stamp === stamp; });
   if (!note) { note = { key: key, stamp: stamp }; list.push(note); list.sort(function (a, b) { return a.stamp < b.stamp ? -1 : 1; }); }
-  if (ext === "txt") note.textPath = path;
+  if (ext === "txt") {
+    // Seen again (edited on another device, say)? Re-read it next time.
+    if (note.textPath === path && note.rev && e.rev && note.rev !== e.rev) delete note.text;
+    note.textPath = path;
+    if (e.rev) note.rev = e.rev;
+  }
   else if (NOTE_AUDIO_EXTS.indexOf(ext) !== -1) note.audioPath = path;
   return true;
+}
+
+// Save a corrected transcript. Empty text removes the transcript file, so the
+// note goes back to being voice only.
+async function saveNoteText(note, text) {
+  text = (text || "").trim();
+  const path = note.textPath || ((folderPath() || "") + "/" + NOTES_FOLDER + "/" + note.key + "." + note.stamp + ".txt");
+  if (!text) {
+    if (note.textPath) {
+      await dbx("/files/delete_v2", { path: note.textPath });
+      delete note.textPath; delete note.rev;
+    }
+    note.text = "";
+    return;
+  }
+  const saved = await dbxUpload(path, new Blob([text], { type: "text/plain" }), "overwrite");
+  note.textPath = (saved && saved.path_lower) || path.toLowerCase();
+  if (saved && saved.rev) note.rev = saved.rev;
+  note.text = text;
 }
 
 // A note file was deleted in Dropbox. Returns true if it was one of ours.
@@ -2752,14 +2791,15 @@ async function noteAudioLink(note) {
   return note.audioUrl;
 }
 
-// Send one file up to Dropbox. Never overwrites - a name clash gets " (1)".
-async function dbxUpload(path, blob) {
+// Send one file up to Dropbox. By default never overwrites - a name clash
+// gets " (1)". Pass "overwrite" to replace a file (used for edited transcripts).
+async function dbxUpload(path, blob, mode) {
   const token = await dropboxToken();
   const res = await fetch(DBX_CONTENT + "/files/upload", {
     method: "POST",
     headers: {
       "Authorization": "Bearer " + token,
-      "Dropbox-API-Arg": asciiJson({ path: path, mode: "add", autorename: true, mute: true }),
+      "Dropbox-API-Arg": asciiJson({ path: path, mode: mode || "add", autorename: mode !== "overwrite", mute: true }),
       "Content-Type": "application/octet-stream"
     },
     body: blob
@@ -3047,6 +3087,7 @@ async function saveNote(r) {
 /* --- Info card ---------------------------------------------------------- */
 
 let infoOpen = false;
+let infoCtx = null;         // { photo, notes, title, sub } for the card that is open
 
 async function openInfo() {
   const photo = currentPhoto();
@@ -3073,6 +3114,8 @@ async function openInfo() {
   $("btnInfoRecord").style.display = photo.kind === "dropbox" ? "" : "none";
   $("info").classList.add("showing");
 
+  infoCtx = { photo: photo, notes: notes, title: title, sub: sub };
+
   // Fill the notes in as their text and links arrive.
   const rows = notes.map(function (note) {
     const row = document.createElement("div"); row.className = "note";
@@ -3080,34 +3123,91 @@ async function openInfo() {
     const text = document.createElement("div"); text.className = "text"; text.textContent = "…";
     row.appendChild(when); row.appendChild(text);
     if (note.audioPath) { const a = document.createElement("audio"); a.controls = true; a.preload = "none"; row.appendChild(a); }
+    const tools = document.createElement("div"); tools.className = "tools";
+    const edit = document.createElement("button"); edit.textContent = "Edit";
+    edit.onclick = function () { editNoteRow(note, row, text, tools); };
+    tools.appendChild(edit);
+    row.appendChild(tools);
     box.appendChild(row);
-    return { note: note, row: row, text: text };
+    return { note: note, row: row, text: text, edit: edit };
   });
   await Promise.all(rows.map(async function (r) {
     const t = await noteText(r.note);
     r.text.textContent = t || "Voice note";
     r.text.className = "text" + (t ? "" : " none");
+    r.edit.textContent = t ? "Edit" : "Add text";
     const a = r.row.querySelector("audio");
     if (a) { try { a.src = await noteAudioLink(r.note); } catch (e) { a.remove(); } }
   }));
 
-  // The Safari page carries everything it needs in its address (fresh links
-  // last about four hours), because a Safari tab cannot see this app's Dropbox
-  // connection - Safari and Home Screen apps keep separate storage.
+  await refreshSafariLink();
+}
+
+// The Safari page carries everything it needs in its address (fresh links
+// last about four hours), because a Safari tab cannot see this app's Dropbox
+// connection - Safari and Home Screen apps keep separate storage.
+async function refreshSafariLink() {
   const link = $("btnInfoSafari");
+  const c = infoCtx;
+  if (!c) return;
   link.removeAttribute("href");
   link.style.opacity = "0.5";
   try {
-    link.href = await safariNoteLink(photo, notes, title, sub);
+    link.href = await safariNoteLink(c.photo, c.notes, c.title, c.sub);
     link.style.opacity = "";
+    link.style.display = "";
   } catch (e) {
     link.style.display = "none";
   }
 }
 
+// Turn a note's transcript into a text box; Save writes it back to Dropbox.
+function editNoteRow(note, row, textEl, tools) {
+  if (row.querySelector("textarea")) return;
+  const area = document.createElement("textarea");
+  area.value = note.text || "";
+  area.placeholder = "Type what was said…";
+  textEl.style.display = "none";
+  row.insertBefore(area, textEl);
+  tools.style.display = "none";
+
+  const bar = document.createElement("div"); bar.className = "tools";
+  const save = document.createElement("button"); save.className = "primary"; save.textContent = "Save";
+  const cancel = document.createElement("button"); cancel.textContent = "Cancel";
+  bar.appendChild(save); bar.appendChild(cancel);
+  row.appendChild(bar);
+  area.focus();
+
+  function done() {
+    area.remove(); bar.remove();
+    textEl.style.display = "";
+    tools.style.display = "";
+  }
+  cancel.onclick = done;
+  save.onclick = async function () {
+    save.disabled = true; cancel.disabled = true;
+    save.textContent = "Saving…";
+    try {
+      await saveNoteText(note, area.value);
+      textEl.textContent = note.text || "Voice note";
+      textEl.className = "text" + (note.text ? "" : " none");
+      tools.querySelector("button").textContent = note.text ? "Edit" : "Add text";
+      done();
+      toast(note.text ? "Transcript saved." : "Transcript removed.");
+      refreshSafariLink();
+    } catch (e) {
+      save.disabled = false; cancel.disabled = false;
+      save.textContent = "Save";
+      const raw = (e && (e.raw || e.message)) || "";
+      toast(/missing_scope/.test(raw) ? "Reconnect Dropbox once (Setup > Disconnect > Connect) to allow saving." : "Could not save - check the wifi and try again.");
+    }
+  };
+}
+
 function closeInfo(keepHold) {
   if (!infoOpen) return;
   infoOpen = false;
+  infoCtx = null;
   $("info").classList.remove("showing");
   $("infoNotes").querySelectorAll("audio").forEach(function (a) { try { a.pause(); } catch (e) {} });
   releaseSlideshow();               // the recorder takes its own hold before it calls this
