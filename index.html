@@ -257,7 +257,14 @@
   #dayCard.showing { display: block; }
   #dayCard .hdr { font-size: 13px; line-height: 1.3; opacity: 0.9; margin-bottom: 4px;
                   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  #dayCard svg { display: block; width: 100%; height: auto; }
+  #dayCard .mapwrap { position: relative; width: 100%; height: 140px; overflow: hidden; border-radius: 9px; background: #0f1418; }
+  #dayCard .tiles { position: absolute; inset: 0; }
+  #dayCard .tiles img { position: absolute; width: 256px; height: 256px; opacity: 0.9; pointer-events: none; }
+  /* OpenStreetMap's standard tiles are bright; when they are the fallback,
+     turn them dark to match. */
+  #dayCard .tiles img.osmdark { filter: invert(1) hue-rotate(180deg) brightness(0.55) saturate(0.4); }
+  #dayCard svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  #dayCard .attr { position: absolute; right: 5px; bottom: 2px; font-size: 8px; opacity: 0.6; pointer-events: none; }
   #dayCard .leg { stroke: rgba(255,255,255,0.55); stroke-width: 1.5; fill: none; stroke-dasharray: 3 3; }
   #dayCard .stop { fill: #2f7de1; stroke: #fff; stroke-width: 1.2; }
   #dayCard .stop.later { fill: #2f7de1; opacity: 0.45; }
@@ -532,7 +539,11 @@
   <!-- Drawn map of the day beside the photo. Tap it for the full map. -->
   <div id="dayCard">
     <div class="hdr" id="dayCardHdr"></div>
-    <svg id="dayCardSvg" viewBox="0 0 228 140" aria-hidden="true"></svg>
+    <div class="mapwrap">
+      <div class="tiles" id="dayCardTiles"></div>
+      <svg id="dayCardSvg" viewBox="0 0 228 140" aria-hidden="true"></svg>
+      <div class="attr" id="dayCardAttr"></div>
+    </div>
     <div class="open" id="dayCardOpen"></div>
   </div>
 
@@ -623,6 +634,8 @@
       <h3>Day map beside the photo</h3>
       <p class="help">A small drawn map of the day: every stop as a numbered dot in time order, the one on screen lit up, with the time and place above. Only appears when the photo's day has locations. Tap it for the full street map.</p>
       <div id="dayCardPicker" class="pills"></div>
+      <p class="help" style="margin-top:10px">Behind the dots:</p>
+      <div id="dayCardBgPicker" class="pills"></div>
 
       <h3>Voice notes</h3>
       <p class="help">Tap <strong>Record note</strong> on the frame to talk about the photo on screen. The recording is saved next to your photos in Dropbox, in a <code>_notes</code> folder, and <strong>Info</strong> plays it back. If dictation works on this iPad, a typed-out version is saved too.</p>
@@ -716,7 +729,7 @@
 // Which build this is. Shown at the bottom of Setup under "What the frame
 // currently has", so you can tell whether the iPad has the latest one.
 // Bumped with every change that reaches the iPad.
-const APP_VERSION = "1.10 - day map beside the photo";
+const APP_VERSION = "1.11 - streets behind the day map";
 
 
 /* --- How the slideshow behaves ----------------------------------------- */
@@ -747,6 +760,11 @@ const SWIPE = true;
 // The drawn day map beside the photo: "off", or the corner it sits in -
 // "top-left", "top-right", "bottom-left", "bottom-right". Settable on the iPad.
 const DAY_CARD = "top-left";
+
+// true = faint street map behind the dots (tiles from CARTO, OpenStreetMap as
+// fallback; each tile is fetched once and kept on the iPad). false = plain.
+// Settable on the iPad.
+const DAY_CARD_STREETS = true;
 
 // How long the change between two photos takes, in seconds.
 // 0 = instant switch. 1.5 is gentle.
@@ -2836,6 +2854,16 @@ function renderPickers() {
     renderPickers();
   });
 
+  renderPills($("dayCardBgPicker"), [
+    { value: "streets", label: "Street map" },
+    { value: "plain",   label: "Plain" }
+  ], dayCardStreetsOn() ? "streets" : "plain", function (value) {
+    store.dayCardStreets = value === "streets";
+    saveStore(store);
+    updateDayCard();
+    renderPickers();
+  });
+
   renderPills($("swipePicker"), [
     { value: "on",  label: "Swipe on" },
     { value: "off", label: "Swipe off" }
@@ -3916,6 +3944,94 @@ function dayCardStops(day) {
 }
 function forgetDayCardCache() { Object.keys(dayCardCache).forEach(function (k) { delete dayCardCache[k]; }); }
 
+function dayCardStreetsOn() {
+  return store.dayCardStreets === undefined ? !!DAY_CARD_STREETS : !!store.dayCardStreets;
+}
+
+// Web Mercator, in pixels at zoom z (256-pixel tiles) - the projection map
+// tiles are drawn in, so dots and streets line up.
+function mercX(lon, z) { return (lon + 180) / 360 * 256 * Math.pow(2, z); }
+function mercY(lat, z) {
+  const r = lat * Math.PI / 180;
+  return (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * 256 * Math.pow(2, z);
+}
+
+// Tiles are kept twice over: in memory for this run, and in the iPad's own
+// store (IndexedDB) across restarts, so a tile is fetched from the internet
+// once and never again. Both are best effort - if either is unavailable the
+// tile is simply fetched.
+let tileDbPromise = null;
+function tileDb() {
+  if (tileDbPromise) return tileDbPromise;
+  tileDbPromise = new Promise(function (resolve) {
+    try {
+      const req = indexedDB.open("photoframe-tiles", 1);
+      req.onupgradeneeded = function () { req.result.createObjectStore("tiles"); };
+      req.onsuccess = function () { resolve(req.result); };
+      req.onerror = function () { resolve(null); };
+      req.onblocked = function () { resolve(null); };
+    } catch (e) { resolve(null); }
+  });
+  return tileDbPromise;
+}
+async function tileFromDb(url) {
+  const db = await tileDb();
+  if (!db) return null;
+  return new Promise(function (res) {
+    try {
+      const r = db.transaction("tiles", "readonly").objectStore("tiles").get(url);
+      r.onsuccess = function () { res(r.result || null); };
+      r.onerror = function () { res(null); };
+    } catch (e) { res(null); }
+  });
+}
+async function tileToDb(url, blob) {
+  const db = await tileDb();
+  if (!db) return;
+  try { db.transaction("tiles", "readwrite").objectStore("tiles").put(blob, url); } catch (e) {}
+}
+const tileMem = new Map();          // url -> object URL for this run
+const TILE_MEM_MAX = 240;           // about 7 MB of tiles at most
+function rememberTile(url, objUrl) {
+  tileMem.set(url, objUrl);
+  if (tileMem.size > TILE_MEM_MAX) {
+    const oldest = tileMem.keys().next().value;
+    try { URL.revokeObjectURL(tileMem.get(oldest)); } catch (e) {}
+    tileMem.delete(oldest);
+  }
+}
+// Something an <img> can show for this tile: memory, then the iPad's store,
+// then the internet (kept for next time). "" if it cannot be had.
+async function tileSrc(url) {
+  if (tileMem.has(url)) return tileMem.get(url);
+  const stored = await tileFromDb(url);
+  if (stored) { const o = URL.createObjectURL(stored); rememberTile(url, o); return o; }
+  try {
+    const res = await fetch(url, { mode: "cors" });
+    if (!res.ok) return "";
+    const blob = await res.blob();
+    tileToDb(url, blob);
+    const o = URL.createObjectURL(blob); rememberTile(url, o); return o;
+  } catch (e) { return ""; }
+}
+// Where a tile can come from, in order of preference.
+function tileSources(z, x, y) {
+  const sub = "abcd"[(x + y) % 4];
+  return [
+    { url: "https://" + sub + ".basemaps.cartocdn.com/dark_nolabels/" + z + "/" + x + "/" + y + "@2x.png", cls: "" },
+    { url: "https://tile.openstreetmap.org/" + z + "/" + x + "/" + y + ".png", cls: "osmdark" }
+  ];
+}
+let dayCardRender = 0;              // bumps on every redraw so late tiles are dropped
+async function loadTile(img, sources, token) {
+  for (let i = 0; i < sources.length; i++) {
+    const src = await tileSrc(sources[i].url);
+    if (dayCardRender !== token) return;           // the card has moved on
+    if (src) { img.className = sources[i].cls; img.src = src; return; }
+  }
+  img.remove();
+}
+
 let dayCardOfferTimer = null;
 function updateDayCard() {
   const card = $("dayCard");
@@ -3944,21 +4060,59 @@ function updateDayCard() {
   }
   $("dayCardHdr").textContent = bits.join(" · ");
 
-  // Project the stops into the drawing: longitude squeezed by the latitude so
-  // shapes are not stretched, everything scaled to fit with a margin.
   const W = 228, H = 140, PAD = 14;
-  const k = Math.cos(stops[0].lat * Math.PI / 180) || 1;
-  const xs = stops.map(function (st) { return st.lon * k; });
-  const ys = stops.map(function (st) { return -st.lat; });
-  const minX = Math.min.apply(null, xs), maxX = Math.max.apply(null, xs);
-  const minY = Math.min.apply(null, ys), maxY = Math.max.apply(null, ys);
-  const spanX = maxX - minX || 1e-9, spanY = maxY - minY || 1e-9;
-  const scale = Math.min((W - 2 * PAD) / spanX, (H - 2 * PAD) / spanY);
-  const offX = (W - spanX * scale) / 2, offY = (H - spanY * scale) / 2;
-  const pts = stops.map(function (st, i) {
-    const single = stops.length === 1;
-    return { x: single ? W / 2 : offX + (xs[i] - minX) * scale, y: single ? H / 2 : offY + (ys[i] - minY) * scale };
-  });
+  const token = ++dayCardRender;
+  const tilesBox = $("dayCardTiles");
+  tilesBox.innerHTML = "";
+  let pts;
+  if (dayCardStreetsOn()) {
+    // Streets behind: pick the closest zoom that still fits the day, place
+    // the stops in the tiles' own projection, and lay the tiles underneath.
+    let z = 17, xs, ys;
+    for (; z > 2; z--) {
+      xs = stops.map(function (st) { return mercX(st.lon, z); });
+      ys = stops.map(function (st) { return mercY(st.lat, z); });
+      if (Math.max.apply(null, xs) - Math.min.apply(null, xs) <= W - 2 * PAD
+       && Math.max.apply(null, ys) - Math.min.apply(null, ys) <= H - 2 * PAD) break;
+    }
+    if (stops.length === 1 && z > 16) {          // a lone stop gets some surroundings
+      z = 16; xs = [mercX(stops[0].lon, z)]; ys = [mercY(stops[0].lat, z)];
+    }
+    const cx = (Math.min.apply(null, xs) + Math.max.apply(null, xs)) / 2;
+    const cy = (Math.min.apply(null, ys) + Math.max.apply(null, ys)) / 2;
+    const left = cx - W / 2, top = cy - H / 2;
+    pts = stops.map(function (st, i) { return { x: xs[i] - left, y: ys[i] - top }; });
+    const n = Math.pow(2, z);
+    for (let ty = Math.floor(top / 256); ty <= Math.floor((top + H - 1) / 256); ty++) {
+      if (ty < 0 || ty >= n) continue;
+      for (let tx = Math.floor(left / 256); tx <= Math.floor((left + W - 1) / 256); tx++) {
+        const wx = ((tx % n) + n) % n;
+        const img = document.createElement("img");
+        img.alt = "";
+        img.style.left = (tx * 256 - left) + "px";
+        img.style.top = (ty * 256 - top) + "px";
+        tilesBox.appendChild(img);
+        loadTile(img, tileSources(z, wx, ty), token);
+      }
+    }
+    $("dayCardAttr").textContent = "© OpenStreetMap · © CARTO";
+  } else {
+    // Plain: longitude squeezed by the latitude so shapes are not stretched,
+    // everything scaled to fit with a margin.
+    const k = Math.cos(stops[0].lat * Math.PI / 180) || 1;
+    const xs = stops.map(function (st) { return st.lon * k; });
+    const ys = stops.map(function (st) { return -st.lat; });
+    const minX = Math.min.apply(null, xs), maxX = Math.max.apply(null, xs);
+    const minY = Math.min.apply(null, ys), maxY = Math.max.apply(null, ys);
+    const spanX = maxX - minX || 1e-9, spanY = maxY - minY || 1e-9;
+    const scale = Math.min((W - 2 * PAD) / spanX, (H - 2 * PAD) / spanY);
+    const offX = (W - spanX * scale) / 2, offY = (H - spanY * scale) / 2;
+    pts = stops.map(function (st, i) {
+      const single = stops.length === 1;
+      return { x: single ? W / 2 : offX + (xs[i] - minX) * scale, y: single ? H / 2 : offY + (ys[i] - minY) * scale };
+    });
+    $("dayCardAttr").textContent = "";
+  }
   // Going back to a place later in the day puts two dots on the same spot;
   // nudge the later one aside so both numbers can be read.
   for (let i = 1; i < pts.length; i++) {
