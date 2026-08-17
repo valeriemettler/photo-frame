@@ -285,8 +285,10 @@ untouched and uncropped; **Black** for plain bars; or **My photo** - one
 picture of your own kept behind everything. To choose it, open any photo's
 Info card and tap **Use behind photos**; a third pill then appears in Setup
 with its name, and you can switch between the three at will (the choice is
-remembered). With Soft blur, clips get black behind them; a chosen photo stays
-put for clips too. The file default is `BACKDROP`.
+remembered). Only one photo is kept at a time - choosing another replaces it -
+and **Forget my photo** under the row clears it, dropping back to the soft
+blur. With Soft blur, clips get black behind them; a chosen photo stays put
+for clips too. The file default is `BACKDROP`.
 
 ### Swipe
 
@@ -463,7 +465,7 @@ GitHub, then reload the page on the iPad.
 
 | Setting | What it does | Default |
 |---|---|---|
-| `APP_VERSION` | Which build this is; shown at the bottom of Setup. Bump it with every change | `"1.9.1 - stale-frame guard"` |
+| `APP_VERSION` | Which build this is; shown at the bottom of Setup. Bump it with every change | `"1.9.2 - forget my photo"` |
 | `SECONDS_PER_PHOTO` | How long each photo stays up. Also settable on the iPad | `12` |
 | `NOTES_FOLDER` | Sub-folder where voice notes and transcripts are kept | `"_notes"` |
 | `DICTATION` | `true` = type out what you say while recording a note. Also settable on the iPad | `true` |
@@ -621,3 +623,4 @@ do that - a "Map of this day" opened from an old frame will say so at the top.
 | 1.8 | Map of this day (Info card): stops, times, pictures and a road route on OpenStreetMap; a photo of your choice as the backdrop |
 | 1.9 | Swipe through every photo of a stop on the day map |
 | 1.9.1 | Map and note links carry a version tag so Safari never shows a stale page; the day map says so when its link came from an out-of-date frame |
+| 1.9.2 | Forget my photo button under Behind the photo |

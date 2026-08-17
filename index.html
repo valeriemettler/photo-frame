@@ -557,6 +557,10 @@
       <h3>Behind the photo</h3>
       <p class="help">A portrait photo on a landscape screen leaves space at the sides. Fill it with a soft blur of the same photo, leave it black, or use one picture of your own - open any photo's Info card and tap <strong>Use behind photos</strong>.</p>
       <div id="blurPicker" class="pills"></div>
+      <div class="row" id="backdropTools" style="display:none; margin-top:6px">
+        <button id="btnForgetBackdrop">Forget my photo</button>
+        <span class="help" style="margin:0; align-self:center">Only one photo is kept here at a time - choosing another replaces it.</span>
+      </div>
 
       <h3>Swipe</h3>
       <p class="help">Swipe left for the next photo and right for the one before, without opening the buttons. Tapping still shows the buttons either way.</p>
@@ -666,7 +670,7 @@
 // Which build this is. Shown at the bottom of Setup under "What the frame
 // currently has", so you can tell whether the iPad has the latest one.
 // Bumped with every change that reaches the iPad.
-const APP_VERSION = "1.9.1 - stale-frame guard";
+const APP_VERSION = "1.9.2 - forget my photo";
 
 
 /* --- How the slideshow behaves ----------------------------------------- */
@@ -2764,6 +2768,7 @@ function renderPickers() {
     applyBlurSetting();
     renderPickers();
   });
+  $("backdropTools").style.display = chosen ? "" : "none";
 
   renderPills($("swipePicker"), [
     { value: "on",  label: "Swipe on" },
@@ -3016,6 +3021,15 @@ function wireUpTaps() {
   $("btnInfo").onclick       = function () { if (infoOpen) closeInfo(); else openInfo(); };
   $("btnInfoClose").onclick  = function () { closeInfo(); };
   $("btnInfoRecord").onclick = function () { closeInfo(); startNote(); };
+  $("btnForgetBackdrop").onclick = function () {
+    delete store.backdropPhoto;
+    if (backdropMode() === "photo") setBackdropMode("blur");
+    saveStore(store);
+    chosenBackdropUrl = "";
+    applyBlurSetting();
+    renderPickers();
+    toast("Forgotten - back to the soft blur.");
+  };
   $("btnInfoBackdrop").onclick = function () {
     const p = infoCtx && infoCtx.photo;
     if (!p) return;
