@@ -60,6 +60,22 @@
   .leaflet-popup-content img { display: block; width: 220px; max-width: 70vw; height: auto; border-radius: 8px; margin-top: 8px; background: #ddd; }
   .leaflet-container { font-family: inherit; }
   #empty { padding: 40px; text-align: center; opacity: 0.7; font-size: 17px; }
+  .leaflet-popup-content .gal { font-size: 12px; opacity: 0.6; margin-top: 4px; }
+  .leaflet-popup-content img { cursor: pointer; }
+  .stop .count { display: inline-block; font-size: 12px; opacity: 0.7; }
+  /* Full-screen viewer for one stop's photos: swipe or use the arrows. */
+  #viewer { position: fixed; inset: 0; z-index: 2000; display: none; background: rgba(0,0,0,0.96);
+            flex-direction: column; align-items: center; justify-content: center; touch-action: pan-y; }
+  #viewer.showing { display: flex; }
+  #viewer img { max-width: 100vw; max-height: calc(100vh - 110px); object-fit: contain; user-select: none; -webkit-user-select: none; }
+  #viewer .cap { color: #fff; font-size: 15px; opacity: 0.85; margin-top: 10px; text-align: center; padding: 0 16px; }
+  #viewer .cap .sm { opacity: 0.6; font-size: 13px; }
+  #viewer button { position: absolute; top: 50%; transform: translateY(-50%); width: 56px; height: 90px; border-radius: 14px;
+                   background: rgba(255,255,255,0.10); border: 1px solid rgba(255,255,255,0.2); color: #fff; font-size: 30px; cursor: pointer; }
+  #viewer #vPrev { left: 12px; } #viewer #vNext { right: 12px; }
+  #viewer #vClose { top: calc(env(safe-area-inset-top) + 12px); right: 12px; transform: none; width: 48px; height: 48px; font-size: 22px; border-radius: 12px; }
+  #viewer button:disabled { opacity: 0.25; }
+  #viewer .hint { position: absolute; bottom: calc(env(safe-area-inset-bottom) + 14px); color: #fff; opacity: 0.45; font-size: 12px; }
 </style>
 </head>
 <body>
@@ -87,6 +103,14 @@
     Opened from the photo frame; the pictures use temporary links that stop working after about four hours -
     open it again from the frame's Info button for fresh ones.
   </div>
+</div>
+<div id="viewer">
+  <img id="vImg" alt="">
+  <div class="cap"><span id="vCap"></span><br><span class="sm" id="vSub"></span></div>
+  <button id="vPrev" aria-label="Previous">&#8249;</button>
+  <button id="vNext" aria-label="Next">&#8250;</button>
+  <button id="vClose" aria-label="Close">&#10005;</button>
+  <div class="hint">Swipe left or right · tap &#10005; to go back to the map</div>
 </div>
 <script src="vendor/leaflet.js"></script>
 <script>
@@ -148,11 +172,19 @@ function build(d) {
     const icon = L.divIcon({ className: "", html: '<div class="dot' + (here ? " here" : "") + '">' + (i + 1) + "</div>", iconSize: [0, 0] });
     const m = L.marker([s.lat, s.lon], { icon: icon, zIndexOffset: here ? 1000 : 0 }).addTo(map);
     const when = s.t0 && s.t1 && s.t0 !== s.t1 ? s.t0 + " to " + s.t1 : (s.t0 || "");
+    const pics = (s.photos && s.photos.length) ? s.photos : (s.thumb ? [{ u: s.thumb, t: s.t0, f: s.file }] : []);
     let html = "<b>" + escapeHtml(s.name || ("Stop " + (i + 1))) + "</b><br>" + escapeHtml(when)
              + (s.n ? " · " + s.n + " photo" + (s.n === 1 ? "" : "s") : "") + (here ? " · <b>this photo</b>" : "");
     if (s.sub) html += "<br><span style='opacity:.7'>" + escapeHtml(s.sub) + "</span>";
-    if (s.thumb) html += '<img loading="lazy" src="' + escapeAttr(s.thumb) + '" alt="">';
+    if (pics.length) {
+      html += '<img loading="lazy" src="' + escapeAttr(pics[0].u) + '" alt="" data-stop="' + i + '">';
+      html += '<div class="gal">' + (pics.length > 1 ? "Tap the picture to swipe through all " + pics.length : "Tap the picture to see it large") + "</div>";
+    }
     m.bindPopup(html, { maxWidth: 260 });
+    m.on("popupopen", function (e) {
+      const img = e.popup.getElement().querySelector("img[data-stop]");
+      if (img) img.onclick = function () { openViewer(i, 0); };
+    });
     markers.push(m);
 
     const row = document.createElement("div");
@@ -161,11 +193,58 @@ function build(d) {
     row.querySelector(".when").textContent = when + (here ? " · this photo" : "");
     row.querySelector(".name").textContent = s.name || ("Stop " + (i + 1));
     row.querySelector(".more").textContent = [s.sub, s.n ? s.n + " photo" + (s.n === 1 ? "" : "s") : ""].filter(Boolean).join(" · ");
-    if (s.thumb) { const im = document.createElement("img"); im.loading = "lazy"; im.src = s.thumb; im.alt = ""; row.appendChild(im); }
+    if (pics.length) { const im = document.createElement("img"); im.loading = "lazy"; im.src = pics[0].u; im.alt = ""; im.onclick = function (ev) { ev.stopPropagation(); openViewer(i, 0); }; row.appendChild(im); }
     row.onclick = function () { map.panTo([s.lat, s.lon]); m.openPopup(); };
     list.appendChild(row);
   });
   if (d.from >= 0 && markers[d.from]) setTimeout(function () { markers[d.from].openPopup(); }, 400);
+  if (d.capped) $("sub").textContent += " · pictures for the first " + (stops.reduce(function (n, s) { return n + ((s.photos || []).length); }, 0)) + " photos (" + d.capped + " more that day)";
+
+  // ---- the swipeable viewer ------------------------------------------------
+  const V = { stop: -1, i: 0 };
+  window.openViewer = function (stopIndex, picIndex) {
+    const st = stops[stopIndex];
+    const pics = (st.photos && st.photos.length) ? st.photos : (st.thumb ? [{ u: st.thumb, t: st.t0, f: st.file }] : []);
+    if (!pics.length) return;
+    V.stop = stopIndex; V.i = Math.max(0, Math.min(picIndex, pics.length - 1)); V.pics = pics; V.name = st.name || ("Stop " + (stopIndex + 1));
+    showPic();
+    $("viewer").classList.add("showing");
+  };
+  function showPic() {
+    const p = V.pics[V.i];
+    $("vImg").src = p.u;
+    $("vCap").textContent = V.name + " · " + (V.i + 1) + " of " + V.pics.length;
+    $("vSub").textContent = [p.t, p.f].filter(Boolean).join(" · ");
+    $("vPrev").disabled = V.i === 0;
+    $("vNext").disabled = V.i >= V.pics.length - 1;
+    // Warm the neighbours so the swipe lands instantly.
+    [V.i - 1, V.i + 1].forEach(function (k) { if (V.pics[k]) { const im = new Image(); im.src = V.pics[k].u; } });
+  }
+  function step(dir) {
+    const n = V.i + dir;
+    if (n < 0 || n >= V.pics.length) return;
+    V.i = n; showPic();
+  }
+  window.viewerStep = step;
+  $("vPrev").onclick = function () { step(-1); };
+  $("vNext").onclick = function () { step(1); };
+  $("vClose").onclick = function () { $("viewer").classList.remove("showing"); $("vImg").src = ""; };
+  document.addEventListener("keydown", function (e) {
+    if (!$("viewer").classList.contains("showing")) return;
+    if (e.key === "ArrowRight") step(1);
+    if (e.key === "ArrowLeft") step(-1);
+    if (e.key === "Escape") $("vClose").click();
+  });
+  let sx = null, sy = null, st0 = 0;
+  $("viewer").addEventListener("touchstart", function (e) { if (e.touches.length === 1) { sx = e.touches[0].clientX; sy = e.touches[0].clientY; st0 = Date.now(); } }, { passive: true });
+  $("viewer").addEventListener("touchend", function (e) {
+    if (sx === null) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - sx, dy = t.clientY - sy;
+    sx = null;
+    if (Math.abs(dx) < 40 || Math.abs(dy) > Math.abs(dx) || Date.now() - st0 > 800) return;
+    step(dx < 0 ? 1 : -1);
+  }, { passive: true });
 
   // Google Maps: origin, up to 8 waypoints, destination. More stops than that
   // and we keep the first, the last and an even spread between.

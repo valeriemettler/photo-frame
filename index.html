@@ -666,7 +666,7 @@
 // Which build this is. Shown at the bottom of Setup under "What the frame
 // currently has", so you can tell whether the iPad has the latest one.
 // Bumped with every change that reaches the iPad.
-const APP_VERSION = "1.8 - day maps, chosen backdrop";
+const APP_VERSION = "1.9 - swipe through a stop's photos";
 
 
 /* --- How the slideshow behaves ----------------------------------------- */
@@ -1638,27 +1638,57 @@ function dayStops(day, currentPhoto_) {
   return { stops: stops, from: from };
 }
 
+// Picture links for the originals (Dropbox links, good for about four hours),
+// remembered so a second map of the same day is instant.
+const originalLinks = new Map();          // path -> { link, expires }
+async function originalLink(photo) {
+  const c = originalLinks.get(photo.path);
+  if (c && Date.now() < c.expires) return c.link;
+  const t = await dbx("/files/get_temporary_link", { path: photo.path });
+  originalLinks.set(photo.path, { link: t.link, expires: Date.now() + 3.5 * 60 * 60 * 1000 });
+  return t.link;
+}
+
+// A day's map carries a picture link for every located photo, so each stop can
+// be swiped through. Very long days are capped so the link stays a sane size.
+const MAX_DAY_PICTURES = 150;
+
 // Build the day.html link for the photo on screen. Returns "" if the day has
-// no located photos at all.
-async function dayLinkFor(photo) {
+// no located photos at all. onProgress(done, total) reports the picture links
+// as they arrive.
+async function dayLinkFor(photo, onProgress) {
   const day = photoDay(photo);
   if (!day) return "";
   const grouped = dayStops(day, photo);
   if (!grouped.stops.length) return "";
-  // One picture link per stop, all at once.
-  await Promise.all(grouped.stops.map(async function (st) {
-    try {
-      const t = await dbx("/files/get_temporary_link", { path: st.rep.path });
-      st.thumb = t.link;
-    } catch (e) { st.thumb = ""; }
-  }));
+
+  // Which photos get a picture: all of them up to the cap, oldest first.
+  const all = [];
+  grouped.stops.forEach(function (st) { st.photos.forEach(function (p) { all.push(p); }); });
+  const wanted = all.slice(0, MAX_DAY_PICTURES);
+  const links = new Map();
+  let done = 0;
+  const BATCH = 10;
+  for (let i = 0; i < wanted.length; i += BATCH) {
+    await Promise.all(wanted.slice(i, i + BATCH).map(async function (p) {
+      try { links.set(p.id, await originalLink(p)); } catch (e) { links.set(p.id, ""); }
+      done++;
+      if (onProgress) onProgress(done, wanted.length);
+    }));
+  }
+
   const data = {
-    v: 1, day: day, label: dayLabel(day), from: grouped.from,
+    v: 2, day: day, label: dayLabel(day), from: grouped.from,
     folder: folderLabelFor(photo) || "",
     unplaced: unplacedOnDay(day),
+    capped: all.length > wanted.length ? all.length - wanted.length : 0,
     stops: grouped.stops.map(function (st) {
+      const pics = st.photos.map(function (p) {
+        return { u: links.get(p.id) || "", t: photoClock(p), f: p.name };
+      }).filter(function (x) { return x.u; });
       return { lat: +st.lat.toFixed(6), lon: +st.lon.toFixed(6), t0: st.t0, t1: st.t1, n: st.n,
-               name: st.name, sub: st.sub, thumb: st.thumb || "", file: st.rep.name };
+               name: st.name, sub: st.sub, thumb: pics.length ? pics[0].u : "", file: st.rep.name,
+               photos: pics };
     })
   };
   return location.origin + location.pathname.replace(/[^\/]*$/, "") + "day.html#d=" + encodeNoteData(data);
@@ -3790,7 +3820,8 @@ async function openInfo() {
   await refreshDayLink();
 }
 
-// "Map of this day": dimmed when nothing that day has a location.
+// "Map of this day": dimmed when nothing that day has a location; shows how
+// the picture links are coming along while it prepares.
 async function refreshDayLink() {
   const link = $("btnInfoDay");
   const c = infoCtx;
@@ -3798,12 +3829,16 @@ async function refreshDayLink() {
   link.removeAttribute("href");
   link.classList.add("off");
   link.style.opacity = "0.5";
+  link.textContent = "Map of this day";
   if (c.photo.kind !== "dropbox") { link.style.opacity = ""; return; }
   try {
-    const href = await dayLinkFor(c.photo);
+    const href = await dayLinkFor(c.photo, function (done, total) {
+      if (infoCtx === c && total > 12) link.textContent = "Map of this day (preparing " + done + " of " + total + ")";
+    });
     if (!infoCtx || infoCtx.photo !== c.photo) return;      // the card moved on
+    link.textContent = "Map of this day";
     if (href) { link.href = href; link.classList.remove("off"); }
-  } catch (e) { /* stays dimmed */ }
+  } catch (e) { link.textContent = "Map of this day"; }
   link.style.opacity = "";
 }
 

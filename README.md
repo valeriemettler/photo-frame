@@ -263,6 +263,16 @@ dimmed. As with the note page, everything the map needs travels inside the
 link, so nothing of yours is stored anywhere - only map tiles and the roads
 request go out. Picture links last about four hours.
 
+Every stop with more than one photo can be swiped through: tap the picture in
+a marker's popup (or in the list on the right) and it opens full-screen with
+arrows and a counter - swipe left and right, or use the arrow keys, and tap the
+cross to come back to the map. To make that work the link carries a picture
+link for every located photo of the day (up to 150; a longer day says so),
+which is why the Info card's button reads "Map of this day (preparing 40 of
+92)" for a few seconds on a big day the first time - the second time that day
+is instant. Pictures are the originals, so they look their best in Safari on
+the iPad; a Windows browser cannot show iPhone HEIC files.
+
 The page is `day.html`, next to `index.html`, with the Leaflet map library
 vendored under `vendor/` (BSD licence, `vendor/LEAFLET-LICENSE.txt`).
 
@@ -453,7 +463,7 @@ GitHub, then reload the page on the iPad.
 
 | Setting | What it does | Default |
 |---|---|---|
-| `APP_VERSION` | Which build this is; shown at the bottom of Setup. Bump it with every change | `"1.8 - day maps, chosen backdrop"` |
+| `APP_VERSION` | Which build this is; shown at the bottom of Setup. Bump it with every change | `"1.9 - swipe through a stop's photos"` |
 | `SECONDS_PER_PHOTO` | How long each photo stays up. Also settable on the iPad | `12` |
 | `NOTES_FOLDER` | Sub-folder where voice notes and transcripts are kept | `"_notes"` |
 | `DICTATION` | `true` = type out what you say while recording a note. Also settable on the iPad | `true` |
@@ -607,3 +617,4 @@ and open it again (or reload the page in Safari).
 | 1.6 | Control bar is a fixed grid of slots (buttons that do not apply are dimmed, not removed, so nothing shifts); confirmations show at the top of the screen |
 | 1.7 | Soft-blur background behind photos, swipe to change photos, and newest/oldest by date taken - each with a Setup switch |
 | 1.8 | Map of this day (Info card): stops, times, pictures and a road route on OpenStreetMap; a photo of your choice as the backdrop |
+| 1.9 | Swipe through every photo of a stop on the day map |
