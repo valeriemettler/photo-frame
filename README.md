@@ -321,6 +321,16 @@ the photos for five minutes.
 Windows that cross midnight (23:00 to 07:00) work fine. Set both times the same
 to switch it off.
 
+### The control bar
+
+Tap the screen and the bar appears at the bottom, the same in both
+orientations: two rows of five fixed slots. Row one: Back, Pause, Next,
+Favorite, Hide this. Row two: Record note, Info, Open in Maps, Undo hide,
+Setup. A button that does not apply right now (Open in Maps on a photo with no
+location, Undo hide when there is nothing to undo) is dimmed rather than
+removed, so the buttons never move under your finger. Confirmations such as
+"Added to favorites" appear at the top of the screen, clear of the bar.
+
 ### Hiding a photo, and getting it back
 
 Tap the screen while it is showing, then tap **Hide this**. It disappears from
@@ -389,7 +399,7 @@ GitHub, then reload the page on the iPad.
 
 | Setting | What it does | Default |
 |---|---|---|
-| `APP_VERSION` | Which build this is; shown at the bottom of Setup. Bump it with every change | `"1.5 - hidden list in Dropbox"` |
+| `APP_VERSION` | Which build this is; shown at the bottom of Setup. Bump it with every change | `"1.6 - steady control bar"` |
 | `SECONDS_PER_PHOTO` | How long each photo stays up. Also settable on the iPad | `12` |
 | `NOTES_FOLDER` | Sub-folder where voice notes and transcripts are kept | `"_notes"` |
 | `DICTATION` | `true` = type out what you say while recording a note. Also settable on the iPad | `true` |
@@ -537,3 +547,4 @@ and open it again (or reload the page in Safari).
 | 1.3 | Edit a note's transcript from the Info card |
 | 1.4 | Favorites button and Favorites-only filter; durations down to half a second |
 | 1.5 | Hidden list kept in Dropbox (`_notes/hidden.txt`), like favorites |
+| 1.6 | Control bar is a fixed grid of slots (buttons that do not apply are dimmed, not removed, so nothing shifts); confirmations show at the top of the screen |

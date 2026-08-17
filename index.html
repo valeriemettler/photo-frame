@@ -181,8 +181,13 @@
     transform: translateX(-50%);
     bottom: calc(env(safe-area-inset-bottom) + 34px);
     z-index: 25;
-    display: flex;
-    gap: 10px;
+    /* A fixed grid of slots, five across and two down, the same in both
+       orientations. Every button keeps its slot whether or not it applies
+       right now (the ones that do not are dimmed), so nothing ever shifts. */
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 8px;
+    width: min(96vw, 780px);
     padding: 10px;
     border-radius: 18px;
     background: rgba(20, 20, 20, 0.72);
@@ -193,8 +198,7 @@
     transition: opacity 0.25s ease;
   }
   #controls.showing { opacity: 1; pointer-events: auto; }
-  /* Nine buttons no longer fit one row in portrait, so let it wrap. */
-  #controls { flex-wrap: wrap; justify-content: center; max-width: 94vw; }
+  #controls button:disabled, #controls a.btn.off { opacity: 0.32; pointer-events: none; }
   #btnNote.recording { background: #c0392b; border-color: #c0392b; font-weight: 600; }
   #btnFav.on { background: #b8860b; border-color: #b8860b; font-weight: 600; }
 
@@ -299,7 +303,7 @@
   #toast {
     position: absolute;
     left: 50%;
-    bottom: calc(env(safe-area-inset-bottom) + 110px);
+    top: calc(env(safe-area-inset-top) + 24px);
     transform: translateX(-50%);
     z-index: 36;
     padding: 12px 20px;
@@ -334,10 +338,11 @@
   #noteView .note .text.none { opacity: 0.55; font-style: italic; }
   #noteView audio { width: 100%; margin-top: 10px; }
   #noteView .foot { font-size: 13px; opacity: 0.45; margin-top: 26px; line-height: 1.5; }
-  #controls button, #controls a.btn { font-size: 16px; padding: 11px 18px; }
+  #controls button, #controls a.btn { font-size: 16px; padding: 11px 6px; min-width: 0;
+                    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center; }
   /* The Map link has to look and sit exactly like its neighbours. */
   #controls a.btn { text-decoration: none; display: inline-flex; align-items: center;
-                    line-height: 1; white-space: nowrap; }
+                    justify-content: center; line-height: 1; white-space: nowrap; }
   #controls a.btn:active { background: rgba(255, 255, 255, 0.28); }
   /* While reviewing, this button unhides rather than hides. Colour it to
      match the banner so the two are obviously the same mode. */
@@ -446,17 +451,19 @@
 
   <!-- Tap-anywhere control bar -->
   <div id="controls">
+    <!-- Row 1: moving about and marking. Row 2: notes, maps, undo, setup.
+         Slots are fixed; a button that does not apply is dimmed, not removed. -->
     <button id="btnPrev">&#9664;&nbsp; Back</button>
     <button id="btnPause">&#10074;&#10074;&nbsp; Pause</button>
     <button id="btnNext">Next &nbsp;&#9654;</button>
-    <button id="btnHide">Hide this</button>
-    <button id="btnUndoHide" style="display:none">Undo hide</button>
     <button id="btnFav">&#9734; Favorite</button>
-    <!-- A real link, not a button: iPadOS blocks window.open from a Home
-         Screen app, which is how the Dropbox sign-in used to fail silently. -->
-    <a id="btnMap" class="btn" target="_blank" rel="noopener" style="display:none">Open in Maps</a>
+    <button id="btnHide">Hide this</button>
     <button id="btnNote">Record note</button>
     <button id="btnInfo">Info</button>
+    <!-- A real link, not a button: iPadOS blocks window.open from a Home
+         Screen app, which is how the Dropbox sign-in used to fail silently. -->
+    <a id="btnMap" class="btn off" target="_blank" rel="noopener">Open in Maps</a>
+    <button id="btnUndoHide" disabled>Undo hide</button>
     <button id="btnSetup">Setup</button>
   </div>
 
@@ -623,7 +630,7 @@
 // Which build this is. Shown at the bottom of Setup under "What the frame
 // currently has", so you can tell whether the iPad has the latest one.
 // Bumped with every change that reaches the iPad.
-const APP_VERSION = "1.5 - hidden list in Dropbox";
+const APP_VERSION = "1.6 - steady control bar";
 
 
 /* --- How the slideshow behaves ----------------------------------------- */
@@ -2122,10 +2129,10 @@ function updateMapButton() {
   const link = mapsLinkFor(currentPhoto());
   if (link) {
     a.href = link;
-    a.style.display = "";
+    a.classList.remove("off");
   } else {
     a.removeAttribute("href");
-    a.style.display = "none";
+    a.classList.add("off");          // stays in its slot, just dimmed
   }
 }
 
@@ -2576,14 +2583,14 @@ let undoTimer = null;
 // sits right next to Next, so mis-taps are easy.
 function offerUndoHide(photo) {
   lastHidden = photo;
-  $("btnUndoHide").style.display = "";
+  $("btnUndoHide").disabled = false;
   clearTimeout(undoTimer);
   undoTimer = setTimeout(hideUndoButton, 30000);
 }
 function hideUndoButton() {
   lastHidden = null;
   clearTimeout(undoTimer);
-  $("btnUndoHide").style.display = "none";
+  $("btnUndoHide").disabled = true;
 }
 
 function showControls() {
@@ -2979,7 +2986,7 @@ function updateFavButton() {
   const on = isFavorite(p);
   b.innerHTML = on ? "&#9733; Favorited" : "&#9734; Favorite";
   b.classList.toggle("on", on);
-  b.style.display = p ? "" : "none";
+  b.disabled = !p;
 }
 
 // Quick taps get bundled into one small upload a moment later.
