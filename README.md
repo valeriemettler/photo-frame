@@ -244,10 +244,50 @@ dissolve.
 
 ### How long each photo stays
 
-Setup has a **How long each photo stays** row: 5 seconds up to 5 minutes. Tap
-one and it counts from the next photo. Video clips ignore it and play all the
-way through (up to `MAX_VIDEO_SECONDS`, 60 by default). The file's own
+Setup has a **How long each photo stays** row: half a second up to 5 minutes.
+Tap one and it counts from the next photo. Video clips ignore it and play all
+the way through (up to `MAX_VIDEO_SECONDS`, 60 by default). The file's own
 `SECONDS_PER_PHOTO` value is always one of the pills, so you can get back to it.
+On the very short settings the cross-fade shortens to fit (half the dwell time),
+so photos still change cleanly.
+
+### Voice notes
+
+Tap the screen, then **Record note**, and talk about the photo on screen. Tap
+**Stop and save**. The recording goes into your Dropbox photo folder under
+`_notes/`, mirroring the photo's own sub-folder and named after it plus the
+time you recorded - for example
+`_notes/Trips/IMG_4021.20260817-103200.m4a`. Several notes per photo are fine.
+
+While you talk, the iPad's own dictation types out what you say (the words
+appear in the recorder card) and that text is saved beside the recording as a
+`.txt` file. If dictation is not available - it needs Siri and Dictation
+switched on, and Apple only sometimes allows it inside Home Screen apps - the
+note still saves as a recording. Setup has a **Voice notes** row where you can
+turn dictation off (**Voice only**), and a status line saying what this iPad
+can do and how many notes were found.
+
+Photos with a note get a small **Voice note** tag in the corner opposite the
+label. Tap it, or tap **Info** in the control bar, for the Info card: where and
+when the photo was taken, each note with its transcript and a play button,
+**Record a note**, and **Open in Safari**. That last one opens the same
+information as a plain page in Safari. It carries everything it needs in its
+web address (a Safari tab cannot see this app's Dropbox connection - Safari
+and Home Screen apps keep separate storage), using temporary Dropbox links
+that last about four hours; open it again from Info for fresh ones.
+
+The slideshow stands still while you record or read, and carries on when you
+finish. Recording stops by itself after `MAX_NOTE_SECONDS` (three minutes).
+
+Two one-time things:
+
+- The Dropbox app needs the **files.content.write** permission ticked in the
+  App Console, and then the frame has to be connected again once (Setup >
+  Disconnect > Connect) so its permission includes writing. Until then, saving
+  shows "Dropbox has to be reconnected once" and keeps your recording ready
+  for **Try again**.
+- The iPad will ask to allow the microphone the first time. If it never asks,
+  Settings > Safari > Microphone (or the entry for this app) > Allow.
 
 ### Quiet hours
 
@@ -267,6 +307,7 @@ skips it.
 Three ways back:
 
 - **Undo hide** appears next to it for 30 seconds after you hide something.
+- **Record note** starts a voice note for the photo on screen; **Info** shows what is known about it and its notes (see Voice notes below).
   For the times you meant to tap Next.
 - **Review hidden photos**, in Setup, turns the rotation inside out and shows
   only the hidden ones. An orange banner across the top makes it obvious, and
@@ -319,6 +360,9 @@ GitHub, then reload the page on the iPad.
 | Setting | What it does | Default |
 |---|---|---|
 | `SECONDS_PER_PHOTO` | How long each photo stays up. Also settable on the iPad | `12` |
+| `NOTES_FOLDER` | Sub-folder where voice notes and transcripts are kept | `"_notes"` |
+| `DICTATION` | `true` = type out what you say while recording a note. Also settable on the iPad | `true` |
+| `MAX_NOTE_SECONDS` | Longest single voice note | `180` |
 | `SHUFFLE` | `true` = random order, `false` = newest first | `true` |
 | `TRANSITION` | `"fade"`, `"dip"`, `"slide"`, `"zoom"`, `"blur"` or `"random"`. Also settable on the iPad | `"fade"` |
 | `FADE_SECONDS` | Length of the cross-fade. `0` = instant | `1.5` |

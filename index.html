@@ -193,6 +193,131 @@
     transition: opacity 0.25s ease;
   }
   #controls.showing { opacity: 1; pointer-events: auto; }
+  /* Nine buttons no longer fit one row in portrait, so let it wrap. */
+  #controls { flex-wrap: wrap; justify-content: center; max-width: 94vw; }
+  #btnNote.recording { background: #c0392b; border-color: #c0392b; font-weight: 600; }
+
+  /* Small "this photo has a note" tag. Sits in the corner opposite the label. */
+  #noteMark {
+    position: absolute;
+    z-index: 21;
+    display: none;
+    padding: 7px 13px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.42);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    font-size: 14px;
+    opacity: 0.85;
+    cursor: pointer;
+  }
+  #noteMark.showing { display: block; }
+  #noteMark::before { content: ""; display: inline-block; width: 8px; height: 8px;
+                      border-radius: 50%; background: #e05a4a; margin-right: 8px; vertical-align: 1px; }
+
+  /* Voice-note recorder card, top centre, stays put while you talk. */
+  #recPanel {
+    position: absolute;
+    top: calc(env(safe-area-inset-top) + 24px);
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 27;
+    display: none;
+    width: min(680px, 92vw);
+    padding: 18px 22px;
+    border-radius: 18px;
+    background: rgba(20, 20, 20, 0.86);
+    -webkit-backdrop-filter: blur(14px);
+    backdrop-filter: blur(14px);
+    box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+  }
+  #recPanel.showing { display: block; }
+  #recPanel .head { display: flex; align-items: center; gap: 12px; font-size: 19px; font-weight: 600; }
+  #recPanel .dot { width: 14px; height: 14px; border-radius: 50%; background: #e05a4a;
+                   animation: recPulse 1.2s ease-in-out infinite; }
+  #recPanel.saving .dot, #recPanel.failed .dot { animation: none; background: #999; }
+  @keyframes recPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+  #recPanel .live { margin: 12px 0 4px; min-height: 48px; max-height: 26vh; overflow-y: auto;
+                    font-size: 18px; line-height: 1.5; }
+  #recPanel .live .interim { opacity: 0.5; }
+  #recPanel .hint { font-size: 14px; opacity: 0.6; margin-bottom: 12px; line-height: 1.5; }
+  #recPanel .row { display: flex; gap: 10px; flex-wrap: wrap; }
+
+  /* Info card: what we know about the photo on screen, and its notes. */
+  #info {
+    position: absolute;
+    inset: 0;
+    z-index: 35;
+    display: none;
+    align-items: flex-end;
+    justify-content: center;
+    padding: 20px;
+    background: rgba(0, 0, 0, 0.35);
+  }
+  #info.showing { display: flex; }
+  #info .card {
+    width: min(760px, 96vw);
+    max-height: 86vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 22px 24px calc(env(safe-area-inset-bottom) + 18px);
+    border-radius: 20px;
+    background: rgba(18, 18, 18, 0.94);
+    -webkit-backdrop-filter: blur(16px);
+    backdrop-filter: blur(16px);
+    box-shadow: 0 12px 50px rgba(0,0,0,0.6);
+  }
+  #info h2 { font-size: 24px; font-weight: 600; margin-bottom: 4px; }
+  #info .sub { font-size: 15px; opacity: 0.7; line-height: 1.5; }
+  #info .file { font-size: 13px; opacity: 0.45; font-family: ui-monospace, "SF Mono", Menlo, monospace; margin-top: 4px; }
+  #info .notes { margin: 16px 0 6px; }
+  #info .note { padding: 12px 0; border-top: 1px solid rgba(255,255,255,0.1); }
+  #info .note .when { font-size: 13px; opacity: 0.55; margin-bottom: 6px; }
+  #info .note .text { font-size: 17px; line-height: 1.55; white-space: pre-wrap; }
+  #info .note .text.none { opacity: 0.55; font-style: italic; }
+  #info audio { width: 100%; margin-top: 8px; }
+  #info .row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+  #info .row a.btn { text-decoration: none; display: inline-flex; align-items: center; }
+
+  /* Brief confirmation ("Note saved") at the bottom of the screen. */
+  #toast {
+    position: absolute;
+    left: 50%;
+    bottom: calc(env(safe-area-inset-bottom) + 110px);
+    transform: translateX(-50%);
+    z-index: 36;
+    padding: 12px 20px;
+    border-radius: 999px;
+    background: rgba(40, 40, 40, 0.92);
+    font-size: 16px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+  }
+  #toast.showing { opacity: 1; }
+
+  /* The read-only page a note opens as in Safari (Info > Open in Safari). */
+  #noteView {
+    position: absolute;
+    inset: 0;
+    z-index: 50;
+    display: none;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    background: #0e0e0e;
+    padding: calc(env(safe-area-inset-top) + 24px) 22px calc(env(safe-area-inset-bottom) + 40px);
+  }
+  #noteView.showing { display: block; }
+  #noteView .wrap { max-width: 900px; margin: 0 auto; }
+  #noteView .media { width: 100%; max-height: 62vh; object-fit: contain; border-radius: 14px; background: #000; display: block; }
+  #noteView h1 { font-size: 26px; font-weight: 600; margin: 18px 0 4px; }
+  #noteView .sub { font-size: 16px; opacity: 0.7; line-height: 1.5; }
+  #noteView .note { padding: 16px 0; border-top: 1px solid rgba(255,255,255,0.1); }
+  #noteView .note .when { font-size: 14px; opacity: 0.55; margin-bottom: 8px; }
+  #noteView .note .text { font-size: 19px; line-height: 1.6; white-space: pre-wrap; }
+  #noteView .note .text.none { opacity: 0.55; font-style: italic; }
+  #noteView audio { width: 100%; margin-top: 10px; }
+  #noteView .foot { font-size: 13px; opacity: 0.45; margin-top: 26px; line-height: 1.5; }
   #controls button, #controls a.btn { font-size: 16px; padding: 11px 18px; }
   /* The Map link has to look and sit exactly like its neighbours. */
   #controls a.btn { text-decoration: none; display: inline-flex; align-items: center;
@@ -313,8 +438,46 @@
     <!-- A real link, not a button: iPadOS blocks window.open from a Home
          Screen app, which is how the Dropbox sign-in used to fail silently. -->
     <a id="btnMap" class="btn" target="_blank" rel="noopener" style="display:none">Open in Maps</a>
+    <button id="btnNote">Record note</button>
+    <button id="btnInfo">Info</button>
     <button id="btnSetup">Setup</button>
   </div>
+
+  <!-- "This photo has a note" tag. Tap it to open Info. -->
+  <div id="noteMark"></div>
+
+  <!-- Voice-note recorder -->
+  <div id="recPanel">
+    <div class="head"><span class="dot"></span><span id="recTitle">Recording&hellip; 0:00</span></div>
+    <div class="live" id="recLive"></div>
+    <div class="hint" id="recHint">Talk about the photo on screen. Tap Stop when you are done.</div>
+    <div class="row">
+      <button id="btnRecStop" class="primary">Stop and save</button>
+      <button id="btnRecCancel">Cancel</button>
+      <button id="btnRecRetry" class="primary" style="display:none">Try again</button>
+      <button id="btnRecDiscard" style="display:none">Discard</button>
+    </div>
+  </div>
+
+  <!-- Info card -->
+  <div id="info">
+    <div class="card">
+      <h2 id="infoTitle"></h2>
+      <div class="sub" id="infoSub"></div>
+      <div class="file" id="infoFile"></div>
+      <div class="notes" id="infoNotes"></div>
+      <div class="row">
+        <button id="btnInfoRecord" class="primary">Record a note</button>
+        <a id="btnInfoSafari" class="btn" target="_blank" rel="noopener">Open in Safari</a>
+        <button id="btnInfoClose">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+
+  <!-- Read-only note page (opened in Safari from Info) -->
+  <div id="noteView"><div class="wrap" id="noteViewWrap"></div></div>
 
   <!-- Setup screen -->
   <div id="setup">
@@ -346,6 +509,11 @@
       <h3>Label in the corner</h3>
       <p class="help" id="cornerHelp"></p>
       <div id="cornerPicker" class="pills"></div>
+
+      <h3>Voice notes</h3>
+      <p class="help">Tap <strong>Record note</strong> on the frame to talk about the photo on screen. The recording is saved next to your photos in Dropbox, in a <code>_notes</code> folder, and <strong>Info</strong> plays it back. If dictation works on this iPad, a typed-out version is saved too.</p>
+      <p class="help" id="notesStatus"></p>
+      <div id="dictationPicker" class="pills"></div>
 
       <div class="row" style="margin-top:18px">
         <button id="btnApply" class="primary">Show these photos</button>
@@ -500,6 +668,21 @@ const SLEEP_END   = "07:00";   // wakes up at
 const SLEEP_PEEK_MINUTES = 5;
 
 
+/* --- Voice notes -------------------------------------------------------- */
+
+// Sub-folder (inside the photo folder) where recordings and their transcripts
+// are kept. Files are named after the photo plus the time you recorded.
+const NOTES_FOLDER = "_notes";
+
+// true = while you record, also use the iPad's dictation to type out what you
+// say, and save that alongside the recording. You can also switch this from
+// the Setup screen. If dictation is not available, the voice note still saves.
+const DICTATION = true;
+
+// Longest single note, in seconds. Recording stops by itself after this.
+const MAX_NOTE_SECONDS = 180;
+
+
 /* --- Videos ------------------------------------------------------------- */
 
 // true = play video clips when they come round, muted, then move on.
@@ -627,7 +810,7 @@ let store = loadStore();
 // otherwise the file setting. Clips play their own length regardless.
 function secondsPerPhoto() {
   const v = Number(store.secondsPerPhoto);
-  return (isFinite(v) && v >= 2 && v <= 3600) ? v : SECONDS_PER_PHOTO;
+  return (isFinite(v) && v >= 0.5 && v <= 3600) ? v : SECONDS_PER_PHOTO;
 }
 
 // The App key can come from the file OR from the Setup screen.
@@ -870,6 +1053,7 @@ function asciiJson(obj) {
 async function dropboxListPhotos() {
   const found = [];
   locationFiles = [];
+  notesByKey = {};
   let page = await dbx("/files/list_folder", {
     path: folderPath(),
     recursive: true,
@@ -901,6 +1085,7 @@ function isLocationFile(name) {
 function collectPhotos(entries, into) {
   entries.forEach(function (e) {
     if (e[".tag"] !== "file") return;
+    if (noteFromEntry(e)) return;              // a recording or transcript, not a photo
     if (isLocationFile(e.name)) {
       if (!locationFiles.some(function (f) { return f.path === e.path_lower; })) {
         locationFiles.push({ name: e.name, path: e.path_lower });
@@ -931,11 +1116,13 @@ async function dropboxCheckForChanges() {
   for (;;) {
     page.entries.forEach(function (e) {
       if (e[".tag"] === "deleted") {
+        if (forgetNotePath(e.path_lower)) { updateNoteMark(); return; }
         const i = photos.findIndex(function (p) { return p.path === e.path_lower; });
         if (i !== -1) { photos.splice(i, 1); changed = true; }
         return;
       }
       if (e[".tag"] !== "file") return;
+      if (noteFromEntry(e)) { updateNoteMark(); return; }
       if (isLocationFile(e.name)) {
         if (!locationFiles.some(function (f) { return f.path === e.path_lower; })) {
           locationFiles.push({ name: e.name, path: e.path_lower });
@@ -1348,7 +1535,9 @@ function applyLayerState(el, state) {
 
 // Move `incoming` on screen and `outgoing` off it.
 function runTransition(incoming, outgoing) {
-  const secs = Math.max(0, Number(FADE_SECONDS) || 0);
+  // A 1.5 s fade makes no sense on a 1 s photo - keep it to half the dwell.
+  const dwell = secondsPerPhoto();
+  const secs = Math.min(Math.max(0, Number(FADE_SECONDS) || 0), Math.max(0.15, dwell * 0.5));
   const name = prefersLessMotion() ? "fade" : transitionMode();
   const t = TRANSITIONS[name] || TRANSITIONS.fade;
   const ease = t.easing || "ease-in-out";
@@ -1553,6 +1742,7 @@ async function displayPhoto(photo, record) {
   if (record) rememberShown(photo);
   updateCornerLabel();
   updateMapButton();
+  updateNoteMark();
 
   // Warm up the next photo so the next fade is instant. Videos stream, so
   // there is nothing useful to pre-fetch for those.
@@ -1616,8 +1806,29 @@ function goNext() {
 }
 function togglePause() {
   paused = !paused;
-  $("btnPause").innerHTML = paused ? "&#9654;&nbsp; Play" : "&#10074;&#10074;&nbsp; Pause";
+  setPauseButton();
   if (paused) clearTimeout(timer); else scheduleNext(1000);
+}
+function setPauseButton() {
+  $("btnPause").innerHTML = paused ? "&#9654;&nbsp; Play" : "&#10074;&#10074;&nbsp; Pause";
+}
+
+// Recording and the Info card both need the slideshow to stand still, and to
+// carry on afterwards only if it was running before. Counted, so one closing
+// does not restart a slideshow the other still needs held.
+let holdCount = 0;
+let pausedBeforeHold = false;
+function holdSlideshow() {
+  if (holdCount++ === 0) {
+    pausedBeforeHold = paused;
+    if (!paused) { paused = true; clearTimeout(timer); setPauseButton(); }
+  }
+}
+function releaseSlideshow() {
+  if (holdCount === 0) return;
+  if (--holdCount === 0 && !pausedBeforeHold && paused) {
+    paused = false; setPauseButton(); scheduleNext(1000);
+  }
 }
 
 
@@ -2148,7 +2359,7 @@ function renderPickers() {
 
   // How long each still stays up. The file's own value always gets a pill,
   // so whatever SECONDS_PER_PHOTO says is still pickable from the iPad.
-  const durationChoices = [5, 10, 12, 20, 30, 60, 120, 300];
+  const durationChoices = [0.5, 1, 2, 3, 4, 5, 10, 12, 20, 30, 60, 120, 300];
   if (durationChoices.indexOf(SECONDS_PER_PHOTO) < 0) durationChoices.push(SECONDS_PER_PHOTO);
   const currentSecs = secondsPerPhoto();
   if (durationChoices.indexOf(currentSecs) < 0) durationChoices.push(currentSecs);
@@ -2160,6 +2371,22 @@ function renderPickers() {
     return { value: String(secs), label: label };
   }), String(currentSecs), function (value) {
     store.secondsPerPhoto = Number(value);
+    saveStore(store);
+    renderPickers();
+  });
+
+  // Voice notes: dictation on/off, and what this device can do.
+  let noteCount = 0;
+  Object.keys(notesByKey).forEach(function (k) { noteCount += notesByKey[k].length; });
+  $("notesStatus").textContent =
+    (canRecordHere() ? "This device can record. " : "This browser cannot record audio. ")
+    + (speechRecognitionClass() ? "Dictation looks available. " : "Dictation is not available here, so notes save as voice only. ")
+    + (noteCount ? noteCount + " note" + (noteCount === 1 ? "" : "s") + " found in Dropbox." : "No notes yet.");
+  renderPills($("dictationPicker"), [
+    { value: "on",  label: "Type out what I say" },
+    { value: "off", label: "Voice only" }
+  ], dictationOn() ? "on" : "off", function (value) {
+    store.dictation = value === "on";
     saveStore(store);
     renderPickers();
   });
@@ -2235,6 +2462,8 @@ function applyPickersAndPlay() {
 
 function openSetup() {
   clearTimeout(timer);
+  if (rec) stopNote(true);
+  closeInfo();
   $("inpAppKey").value = appKey();
   $("inpFolder").value = store.folder !== undefined ? store.folder : DROPBOX_FOLDER_PATH;
   $("inpUrls").value   = store.urls || "";
@@ -2301,8 +2530,9 @@ function hideControls() {
 function wireUpTaps() {
   document.body.addEventListener("click", function (ev) {
     // Ignore taps that landed on a button or inside the setup screen.
-    if (ev.target.closest("#controls, #setup, #message button")) return;
+    if (ev.target.closest("#controls, #setup, #message button, #recPanel, #info, #noteMark, #noteView")) return;
     if ($("setup").classList.contains("showing")) return;
+    if (rec || infoOpen) return;             // recording or reading: leave the bar hidden
     if ($("controls").classList.contains("showing")) hideControls(); else showControls();
     keepAwake();                          // a tap is a good moment to re-request this
     peekDuringQuietHours();               // dark right now? show the photos briefly
@@ -2313,6 +2543,17 @@ function wireUpTaps() {
   $("btnPause").onclick  = function () { togglePause(); showControls(); };
   $("btnSetup").onclick  = openSetup;
   $("btnApply").onclick  = applyPickersAndPlay;
+
+  // Voice notes and the Info card
+  $("btnNote").onclick = function () { if (rec) stopNote(true); else startNote(); };
+  $("btnRecStop").onclick    = function () { stopNote(true); };
+  $("btnRecCancel").onclick  = function () { stopNote(false); };
+  $("btnRecRetry").onclick   = function () { if (rec && rec.blob) saveNote(rec); };
+  $("btnRecDiscard").onclick = function () { const r = rec; rec = null; hideRecPanel(); if (r) releaseSlideshow(); };
+  $("btnInfo").onclick       = function () { if (infoOpen) closeInfo(); else openInfo(); };
+  $("btnInfoClose").onclick  = function () { closeInfo(); };
+  $("btnInfoRecord").onclick = function () { closeInfo(); startNote(); };
+  $("noteMark").onclick      = function () { if (!rec && !infoOpen) openInfo(); };
 
   $("btnHide").onclick = function () {
     const p = currentPhoto();
@@ -2377,6 +2618,7 @@ function wireUpTaps() {
   // A keyboard, if one is attached: arrows and space.
   document.addEventListener("keydown", function (e) {
     if ($("setup").classList.contains("showing")) return;
+    if (rec || infoOpen) { if (e.key === "Escape") { if (rec) stopNote(true); else closeInfo(); } return; }
     if (e.key === "ArrowRight") goNext();
     if (e.key === "ArrowLeft")  goPrev();
     if (e.key === " ")        { e.preventDefault(); togglePause(); }
@@ -2394,8 +2636,565 @@ function wireUpTaps() {
 
   // Back online after the wifi dropped out.
   window.addEventListener("online", function () { if (photos.length === 0) start(); });
+
+  // A note link landing on an already-open frame (see renderNoteViewFromHash).
+  window.addEventListener("hashchange", function () { renderNoteViewFromHash(); });
 }
 
+
+
+/* --------------------------------------------------------------------------
+   Voice notes - talk about a photo, keep the recording (and a transcript)
+   next to the photos in Dropbox
+
+   Layout in Dropbox, mirroring the photo's own folder:
+     <photo folder>/_notes/<sub-folder>/<photo name>.<YYYYMMDD-HHMMSS>.m4a
+     <photo folder>/_notes/<sub-folder>/<photo name>.<YYYYMMDD-HHMMSS>.txt
+   Several notes per photo are fine - each gets its own time stamp. Notes are
+   matched to photos by name and folder, the same way the locations file is.
+   -------------------------------------------------------------------------- */
+
+let notesByKey = {};        // "trips/img_4021" -> [ { stamp, audioPath, textPath, text } ]
+const NOTE_AUDIO_EXTS = ["m4a", "mp4", "webm", "ogg", "wav", "aac", "mp3", "caf"];
+
+// The lower-case Dropbox path of the notes folder, with a trailing slash.
+function notesRootLower() {
+  return ((folderPath() || "").toLowerCase() + "/" + NOTES_FOLDER + "/").replace(/\/+/g, "/");
+}
+
+// "trips/img_4021" for /photo frame/trips/IMG_4021.HEIC in folder /Photo Frame.
+function noteKeyFor(photo) {
+  if (!photo || photo.kind !== "dropbox") return "";
+  let rel = photo.path || "";
+  const root = (folderPath() || "").toLowerCase();
+  if (root && rel.indexOf(root + "/") === 0) rel = rel.slice(root.length);
+  rel = rel.replace(/^\/+/, "");
+  return rel.replace(/\.[^.\/]+$/, "");
+}
+
+// If a Dropbox entry is a recording or transcript, file it under its photo
+// and return true. Anything else returns false.
+function noteFromEntry(e) {
+  const path = e.path_lower || "";
+  const root = notesRootLower();
+  if (path.indexOf(root) !== 0) return false;
+  const rel = path.slice(root.length);
+  const m = /^(.+)\.(\d{8}-\d{6})\.([a-z0-9]+)$/.exec(rel);
+  if (!m) return true;                       // inside _notes but not one of ours - ignore it
+  const key = m[1], stamp = m[2], ext = m[3];
+  const list = notesByKey[key] || (notesByKey[key] = []);
+  let note = list.find(function (n) { return n.stamp === stamp; });
+  if (!note) { note = { key: key, stamp: stamp }; list.push(note); list.sort(function (a, b) { return a.stamp < b.stamp ? -1 : 1; }); }
+  if (ext === "txt") note.textPath = path;
+  else if (NOTE_AUDIO_EXTS.indexOf(ext) !== -1) note.audioPath = path;
+  return true;
+}
+
+// A note file was deleted in Dropbox. Returns true if it was one of ours.
+function forgetNotePath(pathLower) {
+  const root = notesRootLower();
+  if ((pathLower || "").indexOf(root) !== 0) return false;
+  Object.keys(notesByKey).forEach(function (key) {
+    notesByKey[key] = notesByKey[key].filter(function (n) {
+      if (n.audioPath === pathLower) delete n.audioPath;
+      if (n.textPath === pathLower) delete n.textPath;
+      return n.audioPath || n.textPath;
+    });
+    if (!notesByKey[key].length) delete notesByKey[key];
+  });
+  return true;
+}
+
+function notesFor(photo) {
+  const key = noteKeyFor(photo);
+  return key ? (notesByKey[key] || []) : [];
+}
+
+// "20260817-103200" -> a Date in local time.
+function stampToDate(stamp) {
+  const m = /^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})$/.exec(stamp || "");
+  if (!m) return null;
+  return new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]);
+}
+function stampNow() {
+  const d = new Date();
+  const p = function (n) { return (n < 10 ? "0" : "") + n; };
+  return "" + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + "-" + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds());
+}
+function whenLabel(stamp) {
+  const d = stampToDate(stamp);
+  if (!d) return "";
+  return d.toLocaleDateString([], { day: "numeric", month: "long", year: "numeric" })
+       + " · " + d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: !CLOCK_24_HOUR });
+}
+
+// The transcript text of a note, fetched once and remembered.
+async function noteText(note) {
+  if (note.text !== undefined) return note.text;
+  if (!note.textPath) { note.text = ""; return ""; }
+  try {
+    const link = await dbx("/files/get_temporary_link", { path: note.textPath });
+    const res = await fetch(link.link);
+    note.text = res.ok ? (await res.text()).trim() : "";
+  } catch (e) {
+    note.text = "";
+  }
+  return note.text;
+}
+
+// A playable link for a note's recording (Dropbox links last four hours).
+async function noteAudioLink(note) {
+  if (!note.audioPath) return "";
+  if (note.audioUrl && Date.now() < note.audioExpires) return note.audioUrl;
+  const link = await dbx("/files/get_temporary_link", { path: note.audioPath });
+  note.audioUrl = link.link;
+  note.audioExpires = Date.now() + 3.5 * 60 * 60 * 1000;
+  return note.audioUrl;
+}
+
+// Send one file up to Dropbox. Never overwrites - a name clash gets " (1)".
+async function dbxUpload(path, blob) {
+  const token = await dropboxToken();
+  const res = await fetch(DBX_CONTENT + "/files/upload", {
+    method: "POST",
+    headers: {
+      "Authorization": "Bearer " + token,
+      "Dropbox-API-Arg": asciiJson({ path: path, mode: "add", autorename: true, mute: true }),
+      "Content-Type": "application/octet-stream"
+    },
+    body: blob
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(function () { return ""; });
+    const err = new Error("Dropbox upload " + res.status + ": " + text.slice(0, 300));
+    err.status = res.status;
+    err.raw = text;
+    throw err;
+  }
+  return res.json();
+}
+
+// The small tag that says a photo has notes.
+function updateNoteMark() {
+  const el = $("noteMark");
+  const n = notesFor(currentPhoto()).length;
+  if (!n || $("noteView").classList.contains("showing")) { el.classList.remove("showing"); return; }
+  el.textContent = n === 1 ? "Voice note" : n + " voice notes";
+  // Opposite side from the corner label, same height, so they never overlap.
+  const pos = CORNER_POSITION.replace("left", "X").replace("right", "left").replace("X", "right");
+  el.className = "corner-" + pos + " showing";
+}
+
+function toast(text) {
+  const el = $("toast");
+  el.textContent = text;
+  el.classList.add("showing");
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(function () { el.classList.remove("showing"); }, 3000);
+}
+
+function dictationOn() {
+  return store.dictation === undefined ? !!DICTATION : !!store.dictation;
+}
+function speechRecognitionClass() {
+  return window.SpeechRecognition || window.webkitSpeechRecognition || null;
+}
+function canRecordHere() {
+  return !!(window.MediaRecorder && navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+}
+
+
+/* --- Recording ---------------------------------------------------------- */
+
+let rec = null;   // the recording in progress, or null
+
+function pickAudioFormat() {
+  const tries = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus", "audio/ogg"];
+  for (let i = 0; i < tries.length; i++) {
+    try { if (MediaRecorder.isTypeSupported(tries[i])) return tries[i]; } catch (e) {}
+  }
+  return "";
+}
+function extensionForMime(mime) {
+  if (/mp4/.test(mime)) return "m4a";
+  if (/webm/.test(mime)) return "webm";
+  if (/ogg/.test(mime)) return "ogg";
+  return "m4a";
+}
+
+async function startNote() {
+  if (rec) return;
+  const photo = currentPhoto();
+  if (!photo) return;
+  if (photo.kind !== "dropbox" || !store.refreshToken) {
+    toast("Notes need Dropbox connected - open Setup.");
+    return;
+  }
+  if (!canRecordHere()) {
+    toast("This browser cannot record audio.");
+    return;
+  }
+
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (e) {
+    showMessage("The microphone is not allowed",
+      ["Tap Allow when the iPad asks about the microphone.",
+       "If it never asks: Settings > Safari > Microphone (or Settings > this app), set it to Allow, then try again."],
+      e && e.message ? e.message : "", false);
+    setTimeout(hideMessage, 8000);
+    return;
+  }
+
+  const mime = pickAudioFormat();
+  let recorder;
+  try {
+    recorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+  } catch (e) {
+    stream.getTracks().forEach(function (t) { t.stop(); });
+    toast("Recording is not supported here.");
+    return;
+  }
+
+  rec = {
+    photo: photo, stream: stream, recorder: recorder, chunks: [], startedAt: Date.now(),
+    speech: null, done: "", partial: "", interim: "", speechState: "off", speechErrors: 0,
+    tick: null, stopping: false, save: true
+  };
+  holdSlideshow();
+  hideControls();
+  closeInfo(true);
+
+  recorder.ondataavailable = function (ev) { if (ev.data && ev.data.size) rec && rec.chunks.push(ev.data); };
+  recorder.onstop = function () { finishNote(); };
+  recorder.start(1000);
+
+  // A muted mic (or a device that quietly refuses) should not look like it
+  // is recording. If the track dies, stop cleanly.
+  stream.getAudioTracks().forEach(function (t) {
+    t.onended = function () { if (rec && !rec.stopping) stopNote(true); };
+  });
+
+  if (dictationOn()) startDictation();
+
+  $("btnNote").classList.add("recording");
+  $("btnNote").textContent = "Stop";
+  showRecPanel("recording");
+  rec.tick = setInterval(updateRecPanel, 500);
+  updateRecPanel();
+}
+
+// The iPad's own dictation, listening alongside the recording. Best effort:
+// any failure leaves the voice note untouched.
+function startDictation() {
+  const SR = speechRecognitionClass();
+  if (!SR) { rec.speechState = "unavailable"; return; }
+  let sr;
+  try {
+    sr = new SR();
+    sr.continuous = true;
+    sr.interimResults = true;
+    sr.lang = navigator.language || "en-US";
+  } catch (e) { rec.speechState = "unavailable"; return; }
+  rec.speech = sr;
+  rec.speechState = "listening";
+
+  sr.onresult = function (ev) {
+    let finals = "", interim = "";
+    for (let i = 0; i < ev.results.length; i++) {
+      const r = ev.results[i];
+      const t = (r[0] && r[0].transcript) || "";
+      if (r.isFinal) finals += t + " "; else interim += t;
+    }
+    if (rec) { rec.partial = finals.trim(); rec.interim = interim.trim(); updateRecPanel(); }
+  };
+  sr.onerror = function (ev) {
+    if (!rec) return;
+    const kind = (ev && ev.error) || "";
+    if (kind === "not-allowed" || kind === "service-not-allowed" || kind === "audio-capture" || kind === "language-not-supported") {
+      rec.speechState = "unavailable";
+    } else if (kind === "network") {
+      if (++rec.speechErrors >= 2) rec.speechState = "unavailable";
+    }
+    updateRecPanel();
+  };
+  sr.onend = function () {
+    if (!rec || rec.speech !== sr) return;
+    // Bank what this run heard, then start a fresh run if we are still going.
+    if (rec.partial) rec.done = (rec.done + " " + rec.partial).trim();
+    rec.partial = ""; rec.interim = "";
+    if (rec.stopping || rec.speechState === "unavailable") { updateRecPanel(); return; }
+    setTimeout(function () {
+      if (!rec || rec.stopping || rec.speech !== sr) return;
+      try { sr.start(); } catch (e) { rec.speechState = "unavailable"; updateRecPanel(); }
+    }, 300);
+  };
+  try { sr.start(); } catch (e) { rec.speechState = "unavailable"; }
+}
+
+function transcriptSoFar() {
+  if (!rec) return "";
+  return [rec.done, rec.partial].filter(Boolean).join(" ").trim();
+}
+
+function showRecPanel(state) {
+  const p = $("recPanel");
+  p.className = "showing " + state;
+  $("btnRecStop").style.display    = state === "recording" ? "" : "none";
+  $("btnRecCancel").style.display  = state === "recording" ? "" : "none";
+  $("btnRecRetry").style.display   = state === "failed" ? "" : "none";
+  $("btnRecDiscard").style.display = state === "failed" ? "" : "none";
+}
+function hideRecPanel() { $("recPanel").className = ""; }
+
+function updateRecPanel() {
+  if (!rec) return;
+  const secs = Math.floor((Date.now() - rec.startedAt) / 1000);
+  $("recTitle").textContent = "Recording… " + Math.floor(secs / 60) + ":" + (secs % 60 < 10 ? "0" : "") + (secs % 60);
+  const live = $("recLive");
+  live.innerHTML = "";
+  const said = transcriptSoFar();
+  if (rec.speechState === "unavailable") {
+    live.textContent = said || "";
+    $("recHint").textContent = "Dictation is not available on this iPad, so this saves as a voice recording only.";
+  } else if (rec.speechState === "listening") {
+    if (said) live.appendChild(document.createTextNode(said + " "));
+    if (rec.interim) { const i = document.createElement("span"); i.className = "interim"; i.textContent = rec.interim; live.appendChild(i); }
+    if (!said && !rec.interim) { const i = document.createElement("span"); i.className = "interim"; i.textContent = "Listening…"; live.appendChild(i); }
+    $("recHint").textContent = "Talk about the photo on screen. What you say is typed out here and saved with the recording. Tap Stop when you are done.";
+  } else {
+    $("recHint").textContent = "Talk about the photo on screen. Tap Stop when you are done.";
+  }
+  if (secs >= MAX_NOTE_SECONDS && !rec.stopping) stopNote(true);
+}
+
+function stopNote(save) {
+  if (!rec || rec.stopping) return;
+  rec.stopping = true;
+  rec.save = save !== false;
+  clearInterval(rec.tick);
+  if (rec.speech) { try { rec.speech.stop(); } catch (e) {} }
+  try {
+    if (rec.recorder.state !== "inactive") rec.recorder.stop();   // fires onstop -> finishNote
+    else finishNote();
+  } catch (e) { finishNote(); }
+}
+
+// Runs once the recorder has handed over its last chunk.
+async function finishNote() {
+  const r = rec;
+  if (!r) return;
+  r.stream.getTracks().forEach(function (t) { t.stop(); });
+  $("btnNote").classList.remove("recording");
+  $("btnNote").textContent = "Record note";
+
+  // Dictation may still deliver its last words for a moment.
+  await new Promise(function (res) { setTimeout(res, 350); });
+  if (r.partial) r.done = (r.done + " " + r.partial).trim();
+
+  const blob = new Blob(r.chunks, { type: r.recorder.mimeType || "audio/mp4" });
+  if (!r.save || blob.size === 0) {
+    rec = null; hideRecPanel(); releaseSlideshow();
+    if (r.save) toast("Nothing was recorded.");
+    return;
+  }
+  r.blob = blob;
+  r.text = (r.done || "").trim();
+  await saveNote(r);
+}
+
+async function saveNote(r) {
+  showRecPanel("saving");
+  $("recTitle").textContent = "Saving…";
+  $("recHint").textContent = "";
+  const key = noteKeyFor(r.photo);
+  const stamp = r.stamp || (r.stamp = stampNow());
+  const base = (folderPath() || "") + "/" + NOTES_FOLDER + "/" + key + "." + stamp;
+  try {
+    const audio = await dbxUpload(base + "." + extensionForMime(r.blob.type), r.blob);
+    noteFromEntry(audio);
+    if (r.text) {
+      const txt = await dbxUpload(base + ".txt", new Blob([r.text], { type: "text/plain" }));
+      noteFromEntry(txt);
+      const list = notesByKey[key] || [];
+      const n = list.find(function (x) { return x.stamp === stamp; });
+      if (n) n.text = r.text;
+    }
+    rec = null;
+    hideRecPanel();
+    releaseSlideshow();
+    updateNoteMark();
+    toast(r.text ? "Note saved, with transcript." : "Voice note saved.");
+  } catch (e) {
+    const raw = (e && (e.raw || e.message)) || "";
+    let why;
+    if (/missing_scope/.test(raw)) {
+      why = "Dropbox has to be reconnected once so the frame is allowed to save files: open Setup, tap Disconnect, then Connect again. Your recording is still here - reconnect, then tap Try again.";
+    } else if (/RECONNECT_NEEDED|NOT_CONNECTED/.test(raw) || e.status === 401) {
+      why = "Dropbox needs reconnecting (Setup > Connect). Your recording is still here - reconnect, then tap Try again.";
+    } else {
+      why = "Could not save the note. Check the wifi, then tap Try again. (" + raw.slice(0, 160) + ")";
+    }
+    showRecPanel("failed");
+    $("recTitle").textContent = "Not saved yet";
+    $("recLive").textContent = r.text || "";
+    $("recHint").textContent = why;
+  }
+}
+
+
+/* --- Info card ---------------------------------------------------------- */
+
+let infoOpen = false;
+
+async function openInfo() {
+  const photo = currentPhoto();
+  if (!photo || rec) return;
+  infoOpen = true;
+  holdSlideshow();
+  hideControls();
+
+  const title = placeLabelFor(photo) || folderLabelFor(photo) || photo.name.replace(/\.[^.]+$/, "");
+  const sub = [placeSubLabelFor(photo), placeWhenLabelFor(photo) || takenLabel(photo)].filter(Boolean).join("\n");
+  $("infoTitle").textContent = title;
+  $("infoSub").textContent = sub;
+  $("infoSub").style.whiteSpace = "pre-line";
+  $("infoFile").textContent = photo.display || photo.name;
+
+  const box = $("infoNotes");
+  box.innerHTML = "";
+  const notes = notesFor(photo);
+  if (photo.kind !== "dropbox") {
+    const p = document.createElement("p"); p.className = "sub"; p.textContent = "Notes need Dropbox connected."; box.appendChild(p);
+  } else if (!notes.length) {
+    const p = document.createElement("p"); p.className = "sub"; p.textContent = "No notes yet for this one."; box.appendChild(p);
+  }
+  $("btnInfoRecord").style.display = photo.kind === "dropbox" ? "" : "none";
+  $("info").classList.add("showing");
+
+  // Fill the notes in as their text and links arrive.
+  const rows = notes.map(function (note) {
+    const row = document.createElement("div"); row.className = "note";
+    const when = document.createElement("div"); when.className = "when"; when.textContent = whenLabel(note.stamp);
+    const text = document.createElement("div"); text.className = "text"; text.textContent = "…";
+    row.appendChild(when); row.appendChild(text);
+    if (note.audioPath) { const a = document.createElement("audio"); a.controls = true; a.preload = "none"; row.appendChild(a); }
+    box.appendChild(row);
+    return { note: note, row: row, text: text };
+  });
+  await Promise.all(rows.map(async function (r) {
+    const t = await noteText(r.note);
+    r.text.textContent = t || "Voice note";
+    r.text.className = "text" + (t ? "" : " none");
+    const a = r.row.querySelector("audio");
+    if (a) { try { a.src = await noteAudioLink(r.note); } catch (e) { a.remove(); } }
+  }));
+
+  // The Safari page carries everything it needs in its address (fresh links
+  // last about four hours), because a Safari tab cannot see this app's Dropbox
+  // connection - Safari and Home Screen apps keep separate storage.
+  const link = $("btnInfoSafari");
+  link.removeAttribute("href");
+  link.style.opacity = "0.5";
+  try {
+    link.href = await safariNoteLink(photo, notes, title, sub);
+    link.style.opacity = "";
+  } catch (e) {
+    link.style.display = "none";
+  }
+}
+
+function closeInfo(keepHold) {
+  if (!infoOpen) return;
+  infoOpen = false;
+  $("info").classList.remove("showing");
+  $("infoNotes").querySelectorAll("audio").forEach(function (a) { try { a.pause(); } catch (e) {} });
+  releaseSlideshow();               // the recorder takes its own hold before it calls this
+}
+
+// When the file itself says it was taken, if the locations file did not.
+function takenLabel(photo) {
+  if (!photo || !photo.when) return "";
+  const d = new Date(photo.when);
+  if (isNaN(d)) return "";
+  return d.toLocaleDateString([], { day: "numeric", month: "long", year: "numeric" });
+}
+
+function encodeNoteData(obj) {
+  const bytes = new TextEncoder().encode(JSON.stringify(obj));
+  return base64url(bytes);
+}
+function decodeNoteData(str) {
+  const b64 = str.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((str.length + 3) % 4);
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return JSON.parse(new TextDecoder().decode(bytes));
+}
+
+async function safariNoteLink(photo, notes, title, sub) {
+  let mediaUrl = "";
+  if (photo.kind === "url") mediaUrl = photo.url;
+  else {
+    const t = await dbx("/files/get_temporary_link", { path: photo.path });
+    mediaUrl = t.link;
+  }
+  const items = [];
+  for (let i = 0; i < notes.length; i++) {
+    const n = notes[i];
+    items.push({ when: whenLabel(n.stamp), text: await noteText(n), audio: n.audioPath ? await noteAudioLink(n) : "" });
+  }
+  const data = { v: 1, title: title, sub: sub, file: photo.name, video: isVideo(photo), media: mediaUrl, notes: items, opened: new Date().toISOString() };
+  return location.origin + location.pathname + "#note=" + encodeNoteData(data);
+}
+
+// The read-only page. Returns true if this load was one.
+function renderNoteViewFromHash() {
+  const h = location.hash || "";
+  if (h.indexOf("#note=") !== 0) return false;
+  let data;
+  try { data = decodeNoteData(h.slice(6)); } catch (e) { return false; }
+  const wrap = $("noteViewWrap");
+  wrap.innerHTML = "";
+  let media;
+  if (data.video) { media = document.createElement("video"); media.controls = true; media.playsInline = true; }
+  else { media = document.createElement("img"); media.alt = data.title || ""; }
+  media.className = "media";
+  media.src = data.media || "";
+  wrap.appendChild(media);
+  const h1 = document.createElement("h1"); h1.textContent = data.title || data.file || "Photo"; wrap.appendChild(h1);
+  if (data.sub) { const s = document.createElement("div"); s.className = "sub"; s.style.whiteSpace = "pre-line"; s.textContent = data.sub; wrap.appendChild(s); }
+  (data.notes || []).forEach(function (n) {
+    const row = document.createElement("div"); row.className = "note";
+    const when = document.createElement("div"); when.className = "when"; when.textContent = n.when || ""; row.appendChild(when);
+    const text = document.createElement("div"); text.className = "text" + (n.text ? "" : " none"); text.textContent = n.text || "Voice note"; row.appendChild(text);
+    if (n.audio) { const a = document.createElement("audio"); a.controls = true; a.src = n.audio; row.appendChild(a); }
+    wrap.appendChild(row);
+  });
+  if (!(data.notes || []).length) { const p = document.createElement("div"); p.className = "sub"; p.textContent = "No notes yet for this one."; wrap.appendChild(p); }
+  const foot = document.createElement("div"); foot.className = "foot";
+  foot.textContent = "Opened from the photo frame. The picture and recordings on this page use temporary links that stop working after about four hours - open it again from the frame's Info button for fresh ones.";
+  wrap.appendChild(foot);
+  if (typeof photos !== "undefined" && photos.length) {
+    // The frame is already running underneath (a link opened in this same
+    // page rather than a fresh Safari tab) - offer a way back to it.
+    const back = document.createElement("button"); back.className = "primary"; back.style.marginTop = "18px";
+    back.textContent = "Back to the frame";
+    back.onclick = function () {
+      history.replaceState({}, "", location.pathname);
+      $("noteView").classList.remove("showing");
+      releaseSlideshow();
+      updateNoteMark();
+    };
+    wrap.appendChild(back);
+    holdSlideshow();
+  }
+  document.title = (data.title || "Photo") + " - note";
+  $("noteView").classList.add("showing");
+  updateNoteMark();
+  return true;
+}
 
 /* --------------------------------------------------------------------------
    Starting up
@@ -2515,6 +3314,7 @@ function handleRedirectCode() {
 
 // Go.
 window.addEventListener("load", function () {
+  if (renderNoteViewFromHash()) return;      // opened from Info > Open in Safari
   applyFadeSetting();
   setUpCornerLabel();
   if (store.reviewHidden) { delete store.reviewHidden; saveStore(store); }
