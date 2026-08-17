@@ -620,6 +620,12 @@
    ========================================================================== */
 
 
+// Which build this is. Shown at the bottom of Setup under "What the frame
+// currently has", so you can tell whether the iPad has the latest one.
+// Bumped with every change that reaches the iPad.
+const APP_VERSION = "1.4 - favorites";
+
+
 /* --- How the slideshow behaves ----------------------------------------- */
 
 // How many seconds each photo stays on screen. You can also change this from
@@ -2282,6 +2288,7 @@ function showDiagnostics() {
   if (!el) return;
   const key = appKey();
   const lines = [
+    "Version: " + APP_VERSION,
     "App key: " + (key ? "saved (" + key.slice(0, 4) + "..." + key.slice(-3) + ")" : "MISSING"),
     "Dropbox permission: " + (store.refreshToken ? "saved" : "MISSING"),
     "Access token: " + (store.accessToken

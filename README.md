@@ -383,6 +383,7 @@ GitHub, then reload the page on the iPad.
 
 | Setting | What it does | Default |
 |---|---|---|
+| `APP_VERSION` | Which build this is; shown at the bottom of Setup. Bump it with every change | `"1.4 - favorites"` |
 | `SECONDS_PER_PHOTO` | How long each photo stays up. Also settable on the iPad | `12` |
 | `NOTES_FOLDER` | Sub-folder where voice notes and transcripts are kept | `"_notes"` |
 | `DICTATION` | `true` = type out what you say while recording a note. Also settable on the iPad | `true` |
@@ -514,3 +515,17 @@ does not connect the other.
 
 - `index.html` - the frame. This one file is the whole program.
 - `README.md` - this document.
+
+### Version history
+
+The number is at the bottom of Setup, under "What the frame currently has".
+If the iPad shows an older one after a change, close the Home Screen app fully
+and open it again (or reload the page in Safari).
+
+| Version | What changed |
+|---|---|
+| 1.0 | Slideshow, transitions, corner label, quiet hours, hidden photos, locations file |
+| 1.1 | Setup row for how long each photo stays |
+| 1.2 | Voice notes with dictation, Info card, Open in Safari |
+| 1.3 | Edit a note's transcript from the Info card |
+| 1.4 | Favorites button and Favorites-only filter; durations down to half a second |
