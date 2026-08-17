@@ -241,6 +241,31 @@ up a moment later; if Dropbox cannot be reached right then, it goes up on the
 next chance. Edit the file in Dropbox and the frame picks it up on its next
 check. Photos from pasted links can be starred too, but those stay on the iPad.
 
+### Behind the photo: soft blur or black
+
+A portrait photo on the landscape screen (or the other way round) leaves space
+at the sides. Setup has a **Behind the photo** row: **Soft blur** fills that
+space with a blurred, darkened copy of the same photo - the picture itself is
+untouched and uncropped - or **Black** for plain bars. Clips always get black.
+The file default is `BLUR_BACKGROUND`.
+
+### Swipe
+
+Setup has a **Swipe** row. With it on, swipe left on the photo for the next one
+and right for the one before, without opening the buttons. Tapping still shows
+the buttons either way. Swiping on the buttons or on any card does nothing.
+The file default is `SWIPE`.
+
+### Newest and oldest by date taken
+
+Under **Order**, a second row says what **Newest first** and **Oldest first**
+go by. **Date taken** uses when the photo was actually taken - from the
+locations spreadsheet if there is one (that date came from the photo's own
+data), otherwise what Dropbox read out of the file - and falls back to the
+Dropbox date for photos where nothing knows. The pill shows how many photos
+have a known date. **Date added to Dropbox** is the old behaviour, which for a
+bulk upload is roughly upload day. The file default is `SORT_BY`.
+
 ### How photos change
 
 Setup has a **How photos change** row. Tap one and the next photo uses it.
@@ -399,7 +424,7 @@ GitHub, then reload the page on the iPad.
 
 | Setting | What it does | Default |
 |---|---|---|
-| `APP_VERSION` | Which build this is; shown at the bottom of Setup. Bump it with every change | `"1.6 - steady control bar"` |
+| `APP_VERSION` | Which build this is; shown at the bottom of Setup. Bump it with every change | `"1.7 - blur, swipe, date taken"` |
 | `SECONDS_PER_PHOTO` | How long each photo stays up. Also settable on the iPad | `12` |
 | `NOTES_FOLDER` | Sub-folder where voice notes and transcripts are kept | `"_notes"` |
 | `DICTATION` | `true` = type out what you say while recording a note. Also settable on the iPad | `true` |
@@ -407,6 +432,9 @@ GitHub, then reload the page on the iPad.
 | `FAVORITES_FILE` | Name of the favorites list inside the notes folder | `"favorites.txt"` |
 | `HIDDEN_FILE` | Name of the hidden-photos list inside the notes folder | `"hidden.txt"` |
 | `SHUFFLE` | `true` = random order, `false` = newest first | `true` |
+| `SORT_BY` | `"taken"` or `"added"` - what newest/oldest go by. Also settable on the iPad | `"taken"` |
+| `BLUR_BACKGROUND` | `true` = soft blur beside photos instead of black. Also settable on the iPad | `true` |
+| `SWIPE` | `true` = swipe left/right changes photos. Also settable on the iPad | `true` |
 | `TRANSITION` | `"fade"`, `"dip"`, `"slide"`, `"zoom"`, `"blur"` or `"random"`. Also settable on the iPad | `"fade"` |
 | `FADE_SECONDS` | Length of the cross-fade. `0` = instant | `1.5` |
 | `CORNER_SHOWS` | What the corner label shows: `"folder"`, `"clock"`, `"folder+clock"`, `"filename"`, `"none"` | `"folder"` |
@@ -548,3 +576,4 @@ and open it again (or reload the page in Safari).
 | 1.4 | Favorites button and Favorites-only filter; durations down to half a second |
 | 1.5 | Hidden list kept in Dropbox (`_notes/hidden.txt`), like favorites |
 | 1.6 | Control bar is a fixed grid of slots (buttons that do not apply are dimmed, not removed, so nothing shifts); confirmations show at the top of the screen |
+| 1.7 | Soft-blur background behind photos, swipe to change photos, and newest/oldest by date taken - each with a Setup switch |
