@@ -276,6 +276,20 @@ the iPad; a Windows browser cannot show iPhone HEIC files.
 The page is `day.html`, next to `index.html`, with the Leaflet map library
 vendored under `vendor/` (BSD licence, `vendor/LEAFLET-LICENSE.txt`).
 
+### Day map beside the photo
+
+Setup has a **Day map beside the photo** row: **Off**, or the corner it sits
+in. When on, a small drawn map of the day sits over the photo: every stop as a
+numbered dot in time order, joined by a dashed line, the stop you are looking
+at lit in amber (later stops dimmer), and a line above with the time, the
+place and "stop 3 of 9". It only appears when the photo's day has locations;
+a photo with a day but no position of its own says so and shows the day
+without a lit stop. Two stops at the same place (going back later) are nudged
+apart so both numbers can be read. It is drawn from the same day-and-position
+data as the full map, so nothing is fetched from anywhere. Tap the card and it
+prepares the full street map and offers **Open the full map**. The file
+default is `DAY_CARD`.
+
 ### Behind the photo: soft blur, black, or a photo of your choice
 
 A portrait photo on the landscape screen (or the other way round) leaves space
@@ -465,7 +479,7 @@ GitHub, then reload the page on the iPad.
 
 | Setting | What it does | Default |
 |---|---|---|
-| `APP_VERSION` | Which build this is; shown at the bottom of Setup. Bump it with every change | `"1.9.2 - forget my photo"` |
+| `APP_VERSION` | Which build this is; shown at the bottom of Setup. Bump it with every change | `"1.10 - day map beside the photo"` |
 | `SECONDS_PER_PHOTO` | How long each photo stays up. Also settable on the iPad | `12` |
 | `NOTES_FOLDER` | Sub-folder where voice notes and transcripts are kept | `"_notes"` |
 | `DICTATION` | `true` = type out what you say while recording a note. Also settable on the iPad | `true` |
@@ -476,6 +490,7 @@ GitHub, then reload the page on the iPad.
 | `SORT_BY` | `"taken"` or `"added"` - what newest/oldest go by. Also settable on the iPad | `"taken"` |
 | `BACKDROP` | `"blur"`, `"black"` or `"photo"` - what fills the space beside a photo. Also settable on the iPad | `"blur"` |
 | `SWIPE` | `true` = swipe left/right changes photos. Also settable on the iPad | `true` |
+| `DAY_CARD` | `"off"` or a corner (`"top-left"` etc.) for the drawn day map beside the photo. Also settable on the iPad | `"top-left"` |
 | `TRANSITION` | `"fade"`, `"dip"`, `"slide"`, `"zoom"`, `"blur"` or `"random"`. Also settable on the iPad | `"fade"` |
 | `FADE_SECONDS` | Length of the cross-fade. `0` = instant | `1.5` |
 | `CORNER_SHOWS` | What the corner label shows: `"folder"`, `"clock"`, `"folder+clock"`, `"filename"`, `"none"` | `"folder"` |
@@ -624,3 +639,4 @@ do that - a "Map of this day" opened from an old frame will say so at the top.
 | 1.9 | Swipe through every photo of a stop on the day map |
 | 1.9.1 | Map and note links carry a version tag so Safari never shows a stale page; the day map says so when its link came from an out-of-date frame |
 | 1.9.2 | Forget my photo button under Behind the photo |
+| 1.10 | Drawn day map beside the photo (Setup: Off or a corner); tap it for the full map |

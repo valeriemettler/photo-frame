@@ -237,6 +237,41 @@
     cursor: pointer;
   }
   #noteMark.showing { display: block; }
+
+  /* The little drawn map of the day, in a corner: numbered stops joined in
+     time order, the one on screen lit. See DAY_CARD / Setup. */
+  #dayCard {
+    position: absolute;
+    z-index: 21;
+    display: none;
+    width: 250px;
+    padding: 9px 11px 8px;
+    border-radius: 14px;
+    background: rgba(0, 0, 0, 0.42);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
+    cursor: pointer;
+    text-align: left;
+  }
+  #dayCard.showing { display: block; }
+  #dayCard .hdr { font-size: 13px; line-height: 1.3; opacity: 0.9; margin-bottom: 4px;
+                  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #dayCard svg { display: block; width: 100%; height: auto; }
+  #dayCard .leg { stroke: rgba(255,255,255,0.55); stroke-width: 1.5; fill: none; stroke-dasharray: 3 3; }
+  #dayCard .stop { fill: #2f7de1; stroke: #fff; stroke-width: 1.2; }
+  #dayCard .stop.later { fill: #2f7de1; opacity: 0.45; }
+  #dayCard .stop.here { fill: #d99a1c; }
+  #dayCard .num { fill: #fff; font-size: 8px; font-weight: 700; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+  #dayCard .pulse { fill: none; stroke: #d99a1c; stroke-width: 1.5; opacity: 0.8; transform-origin: center; transform-box: fill-box;
+                    animation: cardPulse 2.2s ease-out infinite; }
+  @keyframes cardPulse { 0% { transform: scale(0.6); opacity: 0.9; } 100% { transform: scale(2.4); opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { #dayCard .pulse { animation: none; opacity: 0.5; } }
+  #dayCard .open { display: none; margin-top: 8px; }
+  #dayCard .open a, #dayCard .open span { display: block; text-align: center; font-size: 14px; padding: 8px 10px; border-radius: 10px;
+                    background: #2f7de1; color: #fff; text-decoration: none; }
+  #dayCard .open span { background: rgba(255,255,255,0.14); }
+  #dayCard.offering .open { display: block; }
   #noteMark::before { content: ""; display: inline-block; width: 8px; height: 8px;
                       border-radius: 50%; background: #e05a4a; margin-right: 8px; vertical-align: 1px; }
 
@@ -494,6 +529,13 @@
   <!-- "This photo has a note" tag. Tap it to open Info. -->
   <div id="noteMark"></div>
 
+  <!-- Drawn map of the day beside the photo. Tap it for the full map. -->
+  <div id="dayCard">
+    <div class="hdr" id="dayCardHdr"></div>
+    <svg id="dayCardSvg" viewBox="0 0 228 140" aria-hidden="true"></svg>
+    <div class="open" id="dayCardOpen"></div>
+  </div>
+
   <!-- Voice-note recorder -->
   <div id="recPanel">
     <div class="head"><span class="dot"></span><span id="recTitle">Recording&hellip; 0:00</span></div>
@@ -577,6 +619,10 @@
       <h3>Label in the corner</h3>
       <p class="help" id="cornerHelp"></p>
       <div id="cornerPicker" class="pills"></div>
+
+      <h3>Day map beside the photo</h3>
+      <p class="help">A small drawn map of the day: every stop as a numbered dot in time order, the one on screen lit up, with the time and place above. Only appears when the photo's day has locations. Tap it for the full street map.</p>
+      <div id="dayCardPicker" class="pills"></div>
 
       <h3>Voice notes</h3>
       <p class="help">Tap <strong>Record note</strong> on the frame to talk about the photo on screen. The recording is saved next to your photos in Dropbox, in a <code>_notes</code> folder, and <strong>Info</strong> plays it back. If dictation works on this iPad, a typed-out version is saved too.</p>
@@ -670,7 +716,7 @@
 // Which build this is. Shown at the bottom of Setup under "What the frame
 // currently has", so you can tell whether the iPad has the latest one.
 // Bumped with every change that reaches the iPad.
-const APP_VERSION = "1.9.2 - forget my photo";
+const APP_VERSION = "1.10 - day map beside the photo";
 
 
 /* --- How the slideshow behaves ----------------------------------------- */
@@ -697,6 +743,10 @@ const BLUR_BACKGROUND = true;
 
 // true = swipe left/right changes photos. Settable on the iPad.
 const SWIPE = true;
+
+// The drawn day map beside the photo: "off", or the corner it sits in -
+// "top-left", "top-right", "bottom-left", "bottom-right". Settable on the iPad.
+const DAY_CARD = "top-left";
 
 // How long the change between two photos takes, in seconds.
 // 0 = instant switch. 1.5 is gentle.
@@ -1254,6 +1304,7 @@ async function dropboxCheckForChanges() {
         taken: timeTakenFrom(e),
         geo: geoFrom(e)
       });
+      forgetDayCardCache();
       changed = true;
     });
     store.cursor = page.cursor;
@@ -2150,6 +2201,7 @@ async function displayPhoto(photo, record) {
   updateMapButton();
   updateNoteMark();
   updateFavButton();
+  updateDayCard();
 
   // Warm up the next photo so the next fade is instant. Videos stream, so
   // there is nothing useful to pre-fetch for those.
@@ -2342,6 +2394,7 @@ function loadPlacesFromCsv(text) {
 // Find and read any locations spreadsheet sitting in the Dropbox folder.
 async function loadLocationFiles() {
   placesByFile = {};
+  forgetDayCardCache();
   if (!store.refreshToken) return;
 
   const wanted = locationFiles.slice();
@@ -2770,6 +2823,19 @@ function renderPickers() {
   });
   $("backdropTools").style.display = chosen ? "" : "none";
 
+  renderPills($("dayCardPicker"), [
+    { value: "off",          label: "Off" },
+    { value: "top-left",     label: "Top left" },
+    { value: "top-right",    label: "Top right" },
+    { value: "bottom-left",  label: "Bottom left" },
+    { value: "bottom-right", label: "Bottom right" }
+  ], dayCardCorner(), function (value) {
+    store.dayCard = value;
+    saveStore(store);
+    updateDayCard();
+    renderPickers();
+  });
+
   renderPills($("swipePicker"), [
     { value: "on",  label: "Swipe on" },
     { value: "off", label: "Swipe off" }
@@ -2988,7 +3054,7 @@ function hideControls() {
 function wireUpTaps() {
   document.body.addEventListener("click", function (ev) {
     // Ignore taps that landed on a button or inside the setup screen.
-    if (ev.target.closest("#controls, #setup, #message button, #recPanel, #info, #noteMark, #noteView")) return;
+    if (ev.target.closest("#controls, #setup, #message button, #recPanel, #info, #noteMark, #noteView, #dayCard")) return;
     if ($("setup").classList.contains("showing")) return;
     if (rec || infoOpen) return;             // recording or reading: leave the bar hidden
     if ($("controls").classList.contains("showing")) hideControls(); else showControls();
@@ -3041,6 +3107,7 @@ function wireUpTaps() {
     toast("This photo now sits behind the others. Change it in Setup > Behind the photo.");
   };
   $("noteMark").onclick      = function () { if (!rec && !infoOpen) openInfo(); };
+  $("dayCard").onclick       = function () { if (!rec && !infoOpen) offerFullDayMap(); };
 
   $("btnHide").onclick = function () {
     const p = currentPhoto();
@@ -3108,7 +3175,7 @@ function wireUpTaps() {
   let lastSwipeAt = 0;
   document.body.addEventListener("touchstart", function (ev) {
     if (!swipeOn() || ev.touches.length !== 1) { swipeStart = null; return; }
-    if (ev.target.closest("#controls, #setup, #message, #recPanel, #info, #noteMark, #noteView")) { swipeStart = null; return; }
+    if (ev.target.closest("#controls, #setup, #message, #recPanel, #info, #noteMark, #noteView, #dayCard")) { swipeStart = null; return; }
     if ($("setup").classList.contains("showing") || rec || infoOpen) { swipeStart = null; return; }
     swipeStart = { x: ev.touches[0].clientX, y: ev.touches[0].clientY, t: Date.now() };
   }, { passive: true });
@@ -3832,6 +3899,138 @@ async function openInfo() {
 
   await refreshSafariLink();
   await refreshDayLink();
+}
+
+/* --- The drawn day map beside the photo ---------------------------------- */
+
+function dayCardCorner() {
+  const v = store.dayCard === undefined ? DAY_CARD : store.dayCard;
+  return (v === "top-left" || v === "top-right" || v === "bottom-left" || v === "bottom-right") ? v : "off";
+}
+
+// A day's stops, worked out once per day and reused as photos go by.
+const dayCardCache = {};
+function dayCardStops(day) {
+  if (!dayCardCache[day]) dayCardCache[day] = dayStops(day, null).stops;
+  return dayCardCache[day];
+}
+function forgetDayCardCache() { Object.keys(dayCardCache).forEach(function (k) { delete dayCardCache[k]; }); }
+
+let dayCardOfferTimer = null;
+function updateDayCard() {
+  const card = $("dayCard");
+  const corner = dayCardCorner();
+  const photo = currentPhoto();
+  card.classList.remove("offering");
+  $("dayCardOpen").innerHTML = "";
+  clearTimeout(dayCardOfferTimer);
+  if (corner === "off" || !photo || photo.kind !== "dropbox") { card.className = ""; return; }
+  const day = photoDay(photo);
+  const stops = day ? dayCardStops(day) : [];
+  if (!stops.length) { card.className = ""; return; }
+
+  let from = -1;
+  stops.forEach(function (st, i) { if (st.photos.some(function (p) { return p.id === photo.id; })) from = i; });
+
+  // Header: time, place, position in the day.
+  const bits = [];
+  if (from >= 0) {
+    if (photoClock(photo)) bits.push(photoClock(photo));
+    if (stops[from].name) bits.push(stops[from].name);
+    bits.push("stop " + (from + 1) + " of " + stops.length);
+  } else {
+    bits.push(stops.length === 1 ? "1 stop that day" : stops.length + " stops that day");
+    bits.push("this photo has no location");
+  }
+  $("dayCardHdr").textContent = bits.join(" · ");
+
+  // Project the stops into the drawing: longitude squeezed by the latitude so
+  // shapes are not stretched, everything scaled to fit with a margin.
+  const W = 228, H = 140, PAD = 14;
+  const k = Math.cos(stops[0].lat * Math.PI / 180) || 1;
+  const xs = stops.map(function (st) { return st.lon * k; });
+  const ys = stops.map(function (st) { return -st.lat; });
+  const minX = Math.min.apply(null, xs), maxX = Math.max.apply(null, xs);
+  const minY = Math.min.apply(null, ys), maxY = Math.max.apply(null, ys);
+  const spanX = maxX - minX || 1e-9, spanY = maxY - minY || 1e-9;
+  const scale = Math.min((W - 2 * PAD) / spanX, (H - 2 * PAD) / spanY);
+  const offX = (W - spanX * scale) / 2, offY = (H - spanY * scale) / 2;
+  const pts = stops.map(function (st, i) {
+    const single = stops.length === 1;
+    return { x: single ? W / 2 : offX + (xs[i] - minX) * scale, y: single ? H / 2 : offY + (ys[i] - minY) * scale };
+  });
+  // Going back to a place later in the day puts two dots on the same spot;
+  // nudge the later one aside so both numbers can be read.
+  for (let i = 1; i < pts.length; i++) {
+    for (let tries = 0; tries < 8; tries++) {
+      const clash = pts.slice(0, i).some(function (q) { return Math.hypot(q.x - pts[i].x, q.y - pts[i].y) < 14; });
+      if (!clash) break;
+      const ang = tries * Math.PI / 4;
+      pts[i].x += 14 * Math.cos(ang) * (tries === 0 ? 1 : 1.2);
+      pts[i].y += 14 * Math.sin(ang) * (tries === 0 ? 1 : 1.2);
+      pts[i].x = Math.min(W - 10, Math.max(10, pts[i].x));
+      pts[i].y = Math.min(H - 10, Math.max(10, pts[i].y));
+    }
+  }
+
+  const svgNS = "http://www.w3.org/2000/svg";
+  const svg = $("dayCardSvg");
+  svg.innerHTML = "";
+  if (pts.length > 1) {
+    const path = document.createElementNS(svgNS, "polyline");
+    path.setAttribute("class", "leg");
+    path.setAttribute("points", pts.map(function (p) { return p.x.toFixed(1) + "," + p.y.toFixed(1); }).join(" "));
+    svg.appendChild(path);
+  }
+  pts.forEach(function (p, i) {
+    if (i === from) {
+      const ring = document.createElementNS(svgNS, "circle");
+      ring.setAttribute("class", "pulse");
+      ring.setAttribute("cx", p.x); ring.setAttribute("cy", p.y); ring.setAttribute("r", 9);
+      svg.appendChild(ring);
+    }
+    const c = document.createElementNS(svgNS, "circle");
+    c.setAttribute("class", "stop" + (i === from ? " here" : (from >= 0 && i > from ? " later" : "")));
+    c.setAttribute("cx", p.x); c.setAttribute("cy", p.y); c.setAttribute("r", i === from ? 9 : 7);
+    svg.appendChild(c);
+    const t = document.createElementNS(svgNS, "text");
+    t.setAttribute("class", "num");
+    t.setAttribute("x", p.x); t.setAttribute("y", p.y);
+    t.textContent = String(i + 1);
+    svg.appendChild(t);
+  });
+
+  card.className = "corner-" + corner + " showing";
+}
+
+// Tapping the card offers the full street map. The link takes a moment to
+// prepare (picture links for the day), so it is shown as a button once ready.
+async function offerFullDayMap() {
+  const card = $("dayCard");
+  const photo = currentPhoto();
+  if (!photo) return;
+  if (card.classList.contains("offering")) { card.classList.remove("offering"); return; }
+  const box = $("dayCardOpen");
+  box.innerHTML = "";
+  const wait = document.createElement("span"); wait.textContent = "Preparing the full map…";
+  box.appendChild(wait);
+  card.classList.add("offering");
+  try {
+    const href = await dayLinkFor(photo, function (done, total) { if (total > 12) wait.textContent = "Preparing the full map… " + done + " of " + total; });
+    if (currentPhoto() !== photo || !card.classList.contains("offering")) return;
+    box.innerHTML = "";
+    if (!href) { const no = document.createElement("span"); no.textContent = "Nothing located that day."; box.appendChild(no); }
+    else {
+      const a = document.createElement("a"); a.href = href; a.target = "_blank"; a.rel = "noopener";
+      a.textContent = "Open the full map";
+      a.onclick = function (ev) { ev.stopPropagation(); };
+      box.appendChild(a);
+    }
+    clearTimeout(dayCardOfferTimer);
+    dayCardOfferTimer = setTimeout(function () { card.classList.remove("offering"); }, 30000);
+  } catch (e) {
+    box.innerHTML = ""; const no = document.createElement("span"); no.textContent = "Could not prepare the map."; box.appendChild(no);
+  }
 }
 
 // "Map of this day": dimmed when nothing that day has a location; shows how
