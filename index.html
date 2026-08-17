@@ -339,6 +339,10 @@
       <p class="help">Tap one to see it straight away on the next photo.</p>
       <div id="transitionPicker" class="pills"></div>
 
+      <h3>How long each photo stays</h3>
+      <p class="help">Counts from the next photo. Videos always play all the way through, whatever you pick here.</p>
+      <div id="durationPicker" class="pills"></div>
+
       <h3>Label in the corner</h3>
       <p class="help" id="cornerHelp"></p>
       <div id="cornerPicker" class="pills"></div>
@@ -429,7 +433,8 @@
 
 /* --- How the slideshow behaves ----------------------------------------- */
 
-// How many seconds each photo stays on screen.
+// How many seconds each photo stays on screen. You can also change this from
+// the Setup screen on the iPad. Video clips ignore it and play right through.
 const SECONDS_PER_PHOTO = 12;
 
 // true  = random order (reshuffled each time it reaches the end)
@@ -617,6 +622,13 @@ function saveStore(obj) {
   catch (e) { /* private browsing - nothing we can do */ }
 }
 let store = loadStore();
+
+// How long a still stays up: the Setup screen's choice if there is one,
+// otherwise the file setting. Clips play their own length regardless.
+function secondsPerPhoto() {
+  const v = Number(store.secondsPerPhoto);
+  return (isFinite(v) && v >= 2 && v <= 3600) ? v : SECONDS_PER_PHOTO;
+}
 
 // The App key can come from the file OR from the Setup screen.
 function appKey() { return (store.appKey || DROPBOX_APP_KEY || "").trim(); }
@@ -1554,10 +1566,10 @@ async function displayPhoto(photo, record) {
     // Stay on the clip for its own length, within reason.
     const secs = (isFinite(vid.duration) && vid.duration > 0)
       ? Math.min(vid.duration, MAX_VIDEO_SECONDS)
-      : SECONDS_PER_PHOTO;
+      : secondsPerPhoto();
     scheduleNext(secs * 1000 + 400);
   } else {
-    scheduleNext(SECONDS_PER_PHOTO * 1000);
+    scheduleNext(secondsPerPhoto() * 1000);
   }
 }
 
@@ -2130,6 +2142,24 @@ function renderPickers() {
     { value: "random", label: "Surprise me" }
   ], store.transition || TRANSITION || "fade", function (value) {
     store.transition = value;
+    saveStore(store);
+    renderPickers();
+  });
+
+  // How long each still stays up. The file's own value always gets a pill,
+  // so whatever SECONDS_PER_PHOTO says is still pickable from the iPad.
+  const durationChoices = [5, 10, 12, 20, 30, 60, 120, 300];
+  if (durationChoices.indexOf(SECONDS_PER_PHOTO) < 0) durationChoices.push(SECONDS_PER_PHOTO);
+  const currentSecs = secondsPerPhoto();
+  if (durationChoices.indexOf(currentSecs) < 0) durationChoices.push(currentSecs);
+  durationChoices.sort(function (x, y) { return x - y; });
+  renderPills($("durationPicker"), durationChoices.map(function (secs) {
+    const label = secs < 60 ? secs + " sec"
+                : secs === 60 ? "1 min"
+                : (secs / 60) + " min";
+    return { value: String(secs), label: label };
+  }), String(currentSecs), function (value) {
+    store.secondsPerPhoto = Number(value);
     saveStore(store);
     renderPickers();
   });

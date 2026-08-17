@@ -242,6 +242,13 @@ Setup has a **How photos change** row. Tap one and the next photo uses it.
 Motion switched on in Accessibility settings, everything falls back to a plain
 dissolve.
 
+### How long each photo stays
+
+Setup has a **How long each photo stays** row: 5 seconds up to 5 minutes. Tap
+one and it counts from the next photo. Video clips ignore it and play all the
+way through (up to `MAX_VIDEO_SECONDS`, 60 by default). The file's own
+`SECONDS_PER_PHOTO` value is always one of the pills, so you can get back to it.
+
 ### Quiet hours
 
 Setup has a **Quiet hours** section. The frame fades to black at your chosen
@@ -311,7 +318,7 @@ GitHub, then reload the page on the iPad.
 
 | Setting | What it does | Default |
 |---|---|---|
-| `SECONDS_PER_PHOTO` | How long each photo stays up | `12` |
+| `SECONDS_PER_PHOTO` | How long each photo stays up. Also settable on the iPad | `12` |
 | `SHUFFLE` | `true` = random order, `false` = newest first | `true` |
 | `TRANSITION` | `"fade"`, `"dip"`, `"slide"`, `"zoom"`, `"blur"` or `"random"`. Also settable on the iPad | `"fade"` |
 | `FADE_SECONDS` | Length of the cross-fade. `0` = instant | `1.5` |
