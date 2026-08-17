@@ -158,6 +158,18 @@ function build(d) {
   $("sub").textContent = parts.join(" · ");
   document.title = (d.label || d.day || "That day") + " - where we went";
 
+  // A link made by an older frame carries one picture per stop and cannot be
+  // swiped through. Say so, and say what fixes it, rather than look broken.
+  const hasGalleries = stops.some(function (s) { return s.photos && s.photos.length; });
+  if (!hasGalleries && total > stops.length) {
+    const warn = document.createElement("div");
+    warn.className = "sub";
+    warn.style.cssText = "margin-top:8px; padding:10px 12px; border-radius:10px; background:rgba(217,154,28,0.18); opacity:1;";
+    warn.textContent = "This map came from a frame that is out of date, so it has only one picture per stop. "
+                     + "Close the frame app fully on the iPad, open it again (Setup should show a newer version), and open the map again to swipe through every photo.";
+    $("top").insertBefore(warn, $("top").querySelector(".row"));
+  }
+
   const map = L.map("map", { zoomControl: true, attributionControl: false });
   L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19 }).addTo(map);
   const latlngs = stops.map(function (s) { return [s.lat, s.lon]; });

@@ -463,7 +463,7 @@ GitHub, then reload the page on the iPad.
 
 | Setting | What it does | Default |
 |---|---|---|
-| `APP_VERSION` | Which build this is; shown at the bottom of Setup. Bump it with every change | `"1.9 - swipe through a stop's photos"` |
+| `APP_VERSION` | Which build this is; shown at the bottom of Setup. Bump it with every change | `"1.9.1 - stale-frame guard"` |
 | `SECONDS_PER_PHOTO` | How long each photo stays up. Also settable on the iPad | `12` |
 | `NOTES_FOLDER` | Sub-folder where voice notes and transcripts are kept | `"_notes"` |
 | `DICTATION` | `true` = type out what you say while recording a note. Also settable on the iPad | `true` |
@@ -604,7 +604,9 @@ does not connect the other.
 
 The number is at the bottom of Setup, under "What the frame currently has".
 If the iPad shows an older one after a change, close the Home Screen app fully
-and open it again (or reload the page in Safari).
+and open it again (or reload the page in Safari). The frame page never reloads
+itself while it is running, so after an update it keeps the old code until you
+do that - a "Map of this day" opened from an old frame will say so at the top.
 
 | Version | What changed |
 |---|---|
@@ -618,3 +620,4 @@ and open it again (or reload the page in Safari).
 | 1.7 | Soft-blur background behind photos, swipe to change photos, and newest/oldest by date taken - each with a Setup switch |
 | 1.8 | Map of this day (Info card): stops, times, pictures and a road route on OpenStreetMap; a photo of your choice as the backdrop |
 | 1.9 | Swipe through every photo of a stop on the day map |
+| 1.9.1 | Map and note links carry a version tag so Safari never shows a stale page; the day map says so when its link came from an out-of-date frame |

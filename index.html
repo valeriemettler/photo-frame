@@ -666,7 +666,7 @@
 // Which build this is. Shown at the bottom of Setup under "What the frame
 // currently has", so you can tell whether the iPad has the latest one.
 // Bumped with every change that reaches the iPad.
-const APP_VERSION = "1.9 - swipe through a stop's photos";
+const APP_VERSION = "1.9.1 - stale-frame guard";
 
 
 /* --- How the slideshow behaves ----------------------------------------- */
@@ -1678,7 +1678,7 @@ async function dayLinkFor(photo, onProgress) {
   }
 
   const data = {
-    v: 2, day: day, label: dayLabel(day), from: grouped.from,
+    v: 2, app: APP_VERSION.split(" ")[0], day: day, label: dayLabel(day), from: grouped.from,
     folder: folderLabelFor(photo) || "",
     unplaced: unplacedOnDay(day),
     capped: all.length > wanted.length ? all.length - wanted.length : 0,
@@ -1691,7 +1691,7 @@ async function dayLinkFor(photo, onProgress) {
                photos: pics };
     })
   };
-  return location.origin + location.pathname.replace(/[^\/]*$/, "") + "day.html#d=" + encodeNoteData(data);
+  return location.origin + location.pathname.replace(/[^\/]*$/, "") + "day.html?v=" + encodeURIComponent(APP_VERSION.split(" ")[0]) + "#d=" + encodeNoteData(data);
 }
 
 // Every folder that actually has photos in it, with a count for each.
@@ -3945,7 +3945,7 @@ async function safariNoteLink(photo, notes, title, sub) {
     items.push({ when: whenLabel(n.stamp), text: await noteText(n), audio: n.audioPath ? await noteAudioLink(n) : "" });
   }
   const data = { v: 1, title: title, sub: sub, file: photo.name, video: isVideo(photo), media: mediaUrl, notes: items, opened: new Date().toISOString() };
-  return location.origin + location.pathname + "#note=" + encodeNoteData(data);
+  return location.origin + location.pathname + "?v=" + encodeURIComponent(APP_VERSION.split(" ")[0]) + "#note=" + encodeNoteData(data);
 }
 
 // The read-only page. Returns true if this load was one.
