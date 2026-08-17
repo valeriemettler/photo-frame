@@ -325,12 +325,18 @@ to switch it off.
 
 Tap the screen while it is showing, then tap **Hide this**. It disappears from
 the rotation immediately. The photo stays in Dropbox untouched - the frame just
-skips it.
+skips it. The list of hidden photos is kept in Dropbox as `_notes/hidden.txt`
+(one per line: the Dropbox file id, which survives renaming and moving, then the
+file name for reference), so it survives a reset and reaches any other iPad on
+the same folder. Hiding applies on the iPad at once and is written up a moment
+later; a list that only ever lived on the iPad is sent up the first time the
+frame starts after this change.
+
+(**Record note** and **Info** on the same bar are for voice notes - see below.)
 
 Three ways back:
 
 - **Undo hide** appears next to it for 30 seconds after you hide something.
-- **Record note** starts a voice note for the photo on screen; **Info** shows what is known about it and its notes (see Voice notes below).
   For the times you meant to tap Next.
 - **Review hidden photos**, in Setup, turns the rotation inside out and shows
   only the hidden ones. An orange banner across the top makes it obvious, and
@@ -383,12 +389,13 @@ GitHub, then reload the page on the iPad.
 
 | Setting | What it does | Default |
 |---|---|---|
-| `APP_VERSION` | Which build this is; shown at the bottom of Setup. Bump it with every change | `"1.4 - favorites"` |
+| `APP_VERSION` | Which build this is; shown at the bottom of Setup. Bump it with every change | `"1.5 - hidden list in Dropbox"` |
 | `SECONDS_PER_PHOTO` | How long each photo stays up. Also settable on the iPad | `12` |
 | `NOTES_FOLDER` | Sub-folder where voice notes and transcripts are kept | `"_notes"` |
 | `DICTATION` | `true` = type out what you say while recording a note. Also settable on the iPad | `true` |
 | `MAX_NOTE_SECONDS` | Longest single voice note | `180` |
 | `FAVORITES_FILE` | Name of the favorites list inside the notes folder | `"favorites.txt"` |
+| `HIDDEN_FILE` | Name of the hidden-photos list inside the notes folder | `"hidden.txt"` |
 | `SHUFFLE` | `true` = random order, `false` = newest first | `true` |
 | `TRANSITION` | `"fade"`, `"dip"`, `"slide"`, `"zoom"`, `"blur"` or `"random"`. Also settable on the iPad | `"fade"` |
 | `FADE_SECONDS` | Length of the cross-fade. `0` = instant | `1.5` |
@@ -529,3 +536,4 @@ and open it again (or reload the page in Safari).
 | 1.2 | Voice notes with dictation, Info card, Open in Safari |
 | 1.3 | Edit a note's transcript from the Info card |
 | 1.4 | Favorites button and Favorites-only filter; durations down to half a second |
+| 1.5 | Hidden list kept in Dropbox (`_notes/hidden.txt`), like favorites |

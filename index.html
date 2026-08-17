@@ -623,7 +623,7 @@
 // Which build this is. Shown at the bottom of Setup under "What the frame
 // currently has", so you can tell whether the iPad has the latest one.
 // Bumped with every change that reaches the iPad.
-const APP_VERSION = "1.4 - favorites";
+const APP_VERSION = "1.5 - hidden list in Dropbox";
 
 
 /* --- How the slideshow behaves ----------------------------------------- */
@@ -712,6 +712,10 @@ const MAX_NOTE_SECONDS = 180;
 // The list of favorite photos, kept in the same _notes folder. One photo per
 // line (folder/name without the extension), so it is easy to read or edit.
 const FAVORITES_FILE = "favorites.txt";
+
+// The list of hidden photos, kept there too. One per line: the Dropbox file id
+// (which survives renaming and moving), then the file name for reference.
+const HIDDEN_FILE = "hidden.txt";
 
 
 /* --- Videos ------------------------------------------------------------- */
@@ -1184,6 +1188,10 @@ async function dropboxCheckForChanges() {
     await loadFavoritesFromDropbox();
     if (favoritesOnly()) changed = true;
   }
+  if (hiddenFile && hiddenFile.rev !== hiddenLoadedRev) {
+    await loadHiddenFromDropbox();
+    changed = true;                          // the running order must drop or regain photos
+  }
   return changed;
 }
 
@@ -1340,19 +1348,25 @@ function hidePhoto(photo) {
   const h = hiddenIds().slice();
   if (h.indexOf(photo.id) === -1) h.push(photo.id);
   store.hidden = h;
+  if (photo.kind === "dropbox") store.hiddenDirty = true;
   saveStore(store);
+  scheduleHiddenSave();
   return true;
 }
 function unhidePhoto(photo) {
   if (!photo || !photo.id) return false;
   const h = hiddenIds().filter(function (id) { return id !== photo.id; });
   store.hidden = h;
+  if (photo.kind === "dropbox") store.hiddenDirty = true;
   saveStore(store);
+  scheduleHiddenSave();
   return true;
 }
 function unhideAll() {
   delete store.hidden;
+  store.hiddenDirty = true;
   saveStore(store);
+  scheduleHiddenSave();
 }
 
 // "Review hidden photos" flips the rotation round: instead of skipping the
@@ -2750,6 +2764,10 @@ function noteFromEntry(e) {
     favoritesFile = { path: path, rev: e.rev || "" };
     return true;
   }
+  if (rel === HIDDEN_FILE.toLowerCase()) {
+    hiddenFile = { path: path, rev: e.rev || "" };
+    return true;
+  }
   const m = /^(.+)\.(\d{8}-\d{6})\.([a-z0-9]+)$/.exec(rel);
   if (!m) return true;                       // inside _notes but not one of ours - ignore it
   const key = m[1], stamp = m[2], ext = m[3];
@@ -2790,6 +2808,7 @@ function forgetNotePath(pathLower) {
   const root = notesRootLower();
   if ((pathLower || "").indexOf(root) !== 0) return false;
   if (favoritesFile && favoritesFile.path === pathLower) { favoritesFile = null; return true; }
+  if (hiddenFile && hiddenFile.path === pathLower) { hiddenFile = null; return true; }
   Object.keys(notesByKey).forEach(function (key) {
     notesByKey[key] = notesByKey[key].filter(function (n) {
       if (n.audioPath === pathLower) delete n.audioPath;
@@ -3009,6 +3028,75 @@ async function loadFavoritesFromDropbox() {
     updateFavButton();
   } catch (e) {
     console.log("[PhotoFrame] could not read favorites: " + e.message);
+  }
+}
+
+
+/* --- Hidden photos, mirrored to Dropbox --------------------------------- */
+//
+// Same arrangement as favorites: the list on the iPad is what the frame uses,
+// and it is written through to _notes/hidden.txt so it survives a reset and
+// reaches any other iPad on the folder. A list that was only ever on the iPad
+// (from before this existed) is sent up the first time the frame starts with
+// nothing in Dropbox yet.
+
+let hiddenFile = null;
+let hiddenLoadedRev = null;
+let hiddenSaveTimer = null;
+
+function scheduleHiddenSave() {
+  clearTimeout(hiddenSaveTimer);
+  hiddenSaveTimer = setTimeout(saveHiddenToDropbox, 1500);
+}
+function hiddenFilePath() {
+  return (folderPath() || "") + "/" + NOTES_FOLDER + "/" + HIDDEN_FILE;
+}
+
+async function saveHiddenToDropbox() {
+  if (!store.hiddenDirty || !store.refreshToken) return;
+  const ids = hiddenIds().filter(function (id) { return !/^url/.test(id); });   // pasted-link ones stay local
+  const lines = ids.map(function (id) {
+    const p = photoById(id);
+    return id + (p ? "\t" + (p.display || p.name) : "");
+  });
+  const text = "# Photo frame hidden photos - one per line: Dropbox file id, then the file name for reference\n"
+             + lines.join("\n") + (lines.length ? "\n" : "");
+  try {
+    const saved = await dbxUpload(hiddenFilePath(), new Blob([text], { type: "text/plain" }), "overwrite");
+    hiddenFile = { path: (saved && saved.path_lower) || hiddenFilePath().toLowerCase(), rev: (saved && saved.rev) || "" };
+    hiddenLoadedRev = hiddenFile.rev;
+    delete store.hiddenDirty;
+    saveStore(store);
+  } catch (e) {
+    console.log("[PhotoFrame] hidden list not saved yet: " + e.message);
+  }
+}
+
+async function loadHiddenFromDropbox() {
+  if (!store.refreshToken) return;
+  if (store.hiddenDirty) { saveHiddenToDropbox(); return; }
+  if (!hiddenFile) {
+    // Nothing in Dropbox yet but photos hidden on this iPad: seed the file.
+    if (hiddenIds().some(function (id) { return !/^url/.test(id); })) {
+      store.hiddenDirty = true; saveStore(store); saveHiddenToDropbox();
+    }
+    return;
+  }
+  if (hiddenLoadedRev !== null && hiddenLoadedRev === hiddenFile.rev) return;
+  try {
+    const link = await dbx("/files/get_temporary_link", { path: hiddenFile.path });
+    const res = await fetch(link.link);
+    if (!res.ok) return;
+    const remote = (await res.text()).split(/\r?\n/).map(function (l) { return l.trim(); })
+      .filter(function (l) { return l && l[0] !== "#"; })
+      .map(function (l) { return l.split(/\s+/)[0]; });
+    const local = hiddenIds().filter(function (id) { return /^url/.test(id); });
+    store.hidden = remote.concat(local);
+    saveStore(store);
+    hiddenLoadedRev = hiddenFile.rev;
+    updateReviewBar();
+  } catch (e) {
+    console.log("[PhotoFrame] could not read the hidden list: " + e.message);
   }
 }
 
@@ -3529,6 +3617,7 @@ async function start() {
   hideMessage();
   await loadLocationFiles();      // where each photo was taken, if we know
   await loadFavoritesFromDropbox();
+  await loadHiddenFromDropbox();
   buildOrder();
   showPhotoAt(1);
   startWatchingForNewPhotos();
