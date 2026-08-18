@@ -276,6 +276,11 @@
   #dayCard .stop.later { fill: #2f7de1; opacity: 0.45; }
   #dayCard .stop.here { fill: #d99a1c; }
   #dayCard .num { fill: #fff; font-size: 8px; font-weight: 700; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+  #dayCard .far { fill: #fff; opacity: 0.9; }
+  #dayCard .fardist { fill: #fff; font-size: 7px; font-weight: 600; text-anchor: middle; dominant-baseline: central;
+                      paint-order: stroke; stroke: rgba(0,0,0,0.55); stroke-width: 2px; }
+  #dayCard.map-colour .far { fill: #1e3250; }
+  #dayCard.map-colour .fardist { fill: #1e3250; stroke: rgba(255,255,255,0.8); }
   #dayCard .pulse { fill: none; stroke: #d99a1c; stroke-width: 1.5; opacity: 0.8; transform-origin: center; transform-box: fill-box;
                     animation: cardPulse 2.2s ease-out infinite; }
   @keyframes cardPulse { 0% { transform: scale(0.6); opacity: 0.9; } 100% { transform: scale(2.4); opacity: 0; } }
@@ -735,7 +740,7 @@
 // Which build this is. Shown at the bottom of Setup under "What the frame
 // currently has", so you can tell whether the iPad has the latest one.
 // Bumped with every change that reaches the iPad.
-const APP_VERSION = "1.12.1 - day card clusters, no drift";
+const APP_VERSION = "1.13 - day card frames the day, points at far stops";
 
 
 /* --- How the slideshow behaves ----------------------------------------- */
@@ -4053,6 +4058,67 @@ async function loadTile(img, sources, token) {
   img.remove();
 }
 
+// How to frame a day on the card. Normally: the closest zoom that fits every
+// stop. But when most of the day happened in one area and a stop or two far
+// away (the airport, the other town) would force the map out until that area
+// is a speck, frame the area instead - the busiest stops that fit together at
+// the most detailed zoom that still holds most of the day's photos - and
+// point at the far stops from the edge, with their distance.
+function frameDay(stops, W, H, PAD) {
+  const ZMAX = 17;
+  const total = stops.reduce(function (n, st) { return n + st.n; }, 0) || 1;
+  const all = stops.map(function (_, i) { return i; });
+  function fits(idx, z) {
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    idx.forEach(function (i) {
+      const x = mercX(stops[i].lon, z), y = mercY(stops[i].lat, z);
+      if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y;
+    });
+    return (maxX - minX) <= W - 2 * PAD && (maxY - minY) <= H - 2 * PAD;
+  }
+  let fitAll = ZMAX;
+  while (fitAll > 2 && !fits(all, fitAll)) fitAll--;
+  if (stops.length === 1 && fitAll > 16) fitAll = 16;     // a lone stop gets some surroundings
+
+  let z = fitAll, core = all;
+  if (stops.length > 1) {
+    const busiest = all.slice().sort(function (a, b) { return stops[b].n - stops[a].n; });
+    for (let zz = ZMAX; zz > fitAll + 1; zz--) {
+      const c = [busiest[0]];
+      for (let k = 1; k < busiest.length; k++) if (fits(c.concat([busiest[k]]), zz)) c.push(busiest[k]);
+      const share = c.reduce(function (n, i) { return n + stops[i].n; }, 0) / total;
+      // Worth it only if it holds most of the day's photos and leaves at most
+      // a couple of stops to point at from the edge.
+      if (share >= 0.6 && stops.length - c.length <= 2) { z = zz; core = c; break; }
+    }
+  }
+  const xs = stops.map(function (st) { return mercX(st.lon, z); });
+  const ys = stops.map(function (st) { return mercY(st.lat, z); });
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  core.forEach(function (i) { minX = Math.min(minX, xs[i]); maxX = Math.max(maxX, xs[i]); minY = Math.min(minY, ys[i]); maxY = Math.max(maxY, ys[i]); });
+  const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+  const left = cx - W / 2, top = cy - H / 2;
+  // The centre, back in degrees, for distances to the far stops.
+  const world = 256 * Math.pow(2, z);
+  const centre = { lon: cx / world * 360 - 180, lat: Math.atan(Math.sinh(Math.PI * (1 - 2 * cy / world))) * 180 / Math.PI };
+  const pts = stops.map(function (st, i) {
+    const p = { x: xs[i] - left, y: ys[i] - top, far: false, dx: 0, dy: 0, km: 0 };
+    if (core.indexOf(i) === -1) {
+      // Not in frame: sit it on the edge, in its true direction, with an arrow.
+      p.far = true;
+      const vx = p.x - W / 2, vy = p.y - H / 2;
+      const len = Math.hypot(vx, vy) || 1;
+      p.dx = vx / len; p.dy = vy / len;
+      const inW = W / 2 - PAD - 6, inH = H / 2 - PAD - 6;
+      const t = Math.min(inW / Math.abs(vx || 1e-9), inH / Math.abs(vy || 1e-9));
+      p.x = W / 2 + vx * t; p.y = H / 2 + vy * t;
+      p.km = metresBetween(centre, stops[i]) / 1000;
+    }
+    return p;
+  });
+  return { z: z, left: left, top: top, pts: pts };
+}
+
 let dayCardOfferTimer = null;
 function updateDayCard() {
   const card = $("dayCard");
@@ -4085,24 +4151,10 @@ function updateDayCard() {
   const token = ++dayCardRender;
   const tilesBox = $("dayCardTiles");
   tilesBox.innerHTML = "";
-  let pts;
+  const frame = frameDay(stops, W, H, PAD);
+  const pts = frame.pts;
   if (dayCardStreetsOn()) {
-    // Streets behind: pick the closest zoom that still fits the day, place
-    // the stops in the tiles' own projection, and lay the tiles underneath.
-    let z = 17, xs, ys;
-    for (; z > 2; z--) {
-      xs = stops.map(function (st) { return mercX(st.lon, z); });
-      ys = stops.map(function (st) { return mercY(st.lat, z); });
-      if (Math.max.apply(null, xs) - Math.min.apply(null, xs) <= W - 2 * PAD
-       && Math.max.apply(null, ys) - Math.min.apply(null, ys) <= H - 2 * PAD) break;
-    }
-    if (stops.length === 1 && z > 16) {          // a lone stop gets some surroundings
-      z = 16; xs = [mercX(stops[0].lon, z)]; ys = [mercY(stops[0].lat, z)];
-    }
-    const cx = (Math.min.apply(null, xs) + Math.max.apply(null, xs)) / 2;
-    const cy = (Math.min.apply(null, ys) + Math.max.apply(null, ys)) / 2;
-    const left = cx - W / 2, top = cy - H / 2;
-    pts = stops.map(function (st, i) { return { x: xs[i] - left, y: ys[i] - top }; });
+    const z = frame.z, left = frame.left, top = frame.top;
     const n = Math.pow(2, z);
     for (let ty = Math.floor(top / 256); ty <= Math.floor((top + H - 1) / 256); ty++) {
       if (ty < 0 || ty >= n) continue;
@@ -4119,23 +4171,10 @@ function updateDayCard() {
     $("dayCardAttr").textContent = "© OpenStreetMap · © CARTO";
     card.dataset.map = dayCardMapStyle();
   } else {
-    card.dataset.map = "plain";
-    // Plain: longitude squeezed by the latitude so shapes are not stretched,
-    // everything scaled to fit with a margin.
-    const k = Math.cos(stops[0].lat * Math.PI / 180) || 1;
-    const xs = stops.map(function (st) { return st.lon * k; });
-    const ys = stops.map(function (st) { return -st.lat; });
-    const minX = Math.min.apply(null, xs), maxX = Math.max.apply(null, xs);
-    const minY = Math.min.apply(null, ys), maxY = Math.max.apply(null, ys);
-    const spanX = maxX - minX || 1e-9, spanY = maxY - minY || 1e-9;
-    const scale = Math.min((W - 2 * PAD) / spanX, (H - 2 * PAD) / spanY);
-    const offX = (W - spanX * scale) / 2, offY = (H - spanY * scale) / 2;
-    pts = stops.map(function (st, i) {
-      const single = stops.length === 1;
-      return { x: single ? W / 2 : offX + (xs[i] - minX) * scale, y: single ? H / 2 : offY + (ys[i] - minY) * scale };
-    });
     $("dayCardAttr").textContent = "";
+    card.dataset.map = "plain";
   }
+
   // Stops that would overlap at this zoom (the same place, or several places
   // a few streets apart on a day that also went far away) share one marker at
   // their true spot, labelled with their numbers - never nudged elsewhere.
@@ -4149,8 +4188,9 @@ function updateDayCard() {
       g.idx.push(i);
       g.x += (p.x - g.x) / g.idx.length;
       g.y += (p.y - g.y) / g.idx.length;
+      if (p.far) { g.far = true; g.km = Math.max(g.km || 0, p.km); g.dx = p.dx; g.dy = p.dy; }
     } else {
-      groups.push({ x: p.x, y: p.y, idx: [i] });
+      groups.push({ x: p.x, y: p.y, idx: [i], far: p.far, km: p.km, dx: p.dx, dy: p.dy });
     }
   });
   function groupLabel(idx) {
@@ -4193,6 +4233,21 @@ function updateDayCard() {
     if (label.length > 3) t.setAttribute("font-size", "7");
     t.textContent = label;
     svg.appendChild(t);
+    if (g.far) {
+      // A little arrowhead pointing off the map, and how far away it is.
+      const ax = g.x + g.dx * (r + 6), ay = g.y + g.dy * (r + 6);
+      const px = -g.dy, py = g.dx;
+      const tri = document.createElementNS(svgNS, "polygon");
+      tri.setAttribute("class", "far");
+      tri.setAttribute("points", [ax + g.dx * 5, ay + g.dy * 5, ax + px * 3.5, ay + py * 3.5, ax - px * 3.5, ay - py * 3.5]
+        .map(function (v) { return v.toFixed(1); }).join(" "));
+      svg.appendChild(tri);
+      const d = document.createElementNS(svgNS, "text");
+      d.setAttribute("class", "fardist");
+      d.setAttribute("x", g.x - g.dx * (r + 12)); d.setAttribute("y", g.y - g.dy * (r + 12));
+      d.textContent = g.km >= 10 ? Math.round(g.km) + " km" : (g.km >= 1 ? g.km.toFixed(1) + " km" : Math.round(g.km * 1000) + " m");
+      svg.appendChild(d);
+    }
   });
 
   card.className = "corner-" + corner + " showing" + (card.dataset.map === "colour" ? " map-colour" : "");

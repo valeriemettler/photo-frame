@@ -288,7 +288,17 @@ without a lit stop. Stops that would overlap at the card's zoom - the same
 place visited twice, or several places a few streets apart on a day that also
 went far away - share one marker at their true spot labelled with their
 numbers ("2-10"), lit if it holds the current stop; nothing is ever moved off
-its real position. Tap the card and it prepares the full
+its real position.
+
+How the card frames a day: normally the closest zoom that fits every stop.
+But when most of the day happened in one area and a stop or two far away (the
+airport, another town, the city you flew from) would force the map out until
+that area is a speck, it frames the area instead - the busiest stops that fit
+together at the most detailed zoom that still holds most of the day's photos,
+as long as no more than two stops are left out - and shows the far stops at
+the edge in their true direction, with an arrowhead and the distance ("29 km").
+Note that a photo taken on the beach or a marina walkway has its GPS at the
+waterline, so its marker can sit on the blue; that is where the phone was. Tap the card and it prepares the full
 street map and offers **Open the full map**. The file default is `DAY_CARD`.
 
 **Behind the dots** (a second row in the same Setup section): **Colour map**
@@ -491,7 +501,7 @@ GitHub, then reload the page on the iPad.
 
 | Setting | What it does | Default |
 |---|---|---|
-| `APP_VERSION` | Which build this is; shown at the bottom of Setup. Bump it with every change | `"1.12.1 - day card clusters, no drift"` |
+| `APP_VERSION` | Which build this is; shown at the bottom of Setup. Bump it with every change | `"1.13 - day card frames the day, points at far stops"` |
 | `SECONDS_PER_PHOTO` | How long each photo stays up. Also settable on the iPad | `12` |
 | `NOTES_FOLDER` | Sub-folder where voice notes and transcripts are kept | `"_notes"` |
 | `DICTATION` | `true` = type out what you say while recording a note. Also settable on the iPad | `true` |
@@ -656,3 +666,4 @@ do that - a "Map of this day" opened from an old frame will say so at the top.
 | 1.11 | Faint street map behind the day card's dots (CARTO dark tiles, OpenStreetMap fallback), each tile fetched once and kept on the iPad; Setup switch Street map / Plain |
 | 1.12 | Colour map behind the day card (blue water, beige land, roads); Dark map and Plain remain as choices |
 | 1.12.1 | Day card: overlapping stops share one labelled marker instead of being nudged (which put dots in the sea on zoomed-out days); map area taller |
+| 1.13 | Day card frames the main area of the day and points at far stops from the edge with their distance, instead of zooming out to a speck |
