@@ -257,7 +257,7 @@
   #dayCard.showing { display: block; }
   #dayCard .hdr { font-size: 13px; line-height: 1.3; opacity: 0.9; margin-bottom: 4px;
                   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  #dayCard .mapwrap { position: relative; width: 100%; height: 140px; overflow: hidden; border-radius: 9px; background: #0f1418; }
+  #dayCard .mapwrap { position: relative; width: 100%; height: 190px; overflow: hidden; border-radius: 9px; background: #0f1418; }
   #dayCard .tiles { position: absolute; inset: 0; }
   #dayCard .tiles img { position: absolute; width: 256px; height: 256px; opacity: 0.9; pointer-events: none; }
   /* OpenStreetMap's standard tiles are bright; when they are the fallback,
@@ -547,7 +547,7 @@
     <div class="hdr" id="dayCardHdr"></div>
     <div class="mapwrap">
       <div class="tiles" id="dayCardTiles"></div>
-      <svg id="dayCardSvg" viewBox="0 0 228 140" aria-hidden="true"></svg>
+      <svg id="dayCardSvg" viewBox="0 0 228 190" aria-hidden="true"></svg>
       <div class="attr" id="dayCardAttr"></div>
     </div>
     <div class="open" id="dayCardOpen"></div>
@@ -735,7 +735,7 @@
 // Which build this is. Shown at the bottom of Setup under "What the frame
 // currently has", so you can tell whether the iPad has the latest one.
 // Bumped with every change that reaches the iPad.
-const APP_VERSION = "1.12 - colour map behind the day card";
+const APP_VERSION = "1.12.1 - day card clusters, no drift";
 
 
 /* --- How the slideshow behaves ----------------------------------------- */
@@ -4081,7 +4081,7 @@ function updateDayCard() {
   }
   $("dayCardHdr").textContent = bits.join(" · ");
 
-  const W = 228, H = 140, PAD = 14;
+  const W = 228, H = 190, PAD = 14;
   const token = ++dayCardRender;
   const tilesBox = $("dayCardTiles");
   tilesBox.innerHTML = "";
@@ -4136,18 +4136,31 @@ function updateDayCard() {
     });
     $("dayCardAttr").textContent = "";
   }
-  // Going back to a place later in the day puts two dots on the same spot;
-  // nudge the later one aside so both numbers can be read.
-  for (let i = 1; i < pts.length; i++) {
-    for (let tries = 0; tries < 8; tries++) {
-      const clash = pts.slice(0, i).some(function (q) { return Math.hypot(q.x - pts[i].x, q.y - pts[i].y) < 14; });
-      if (!clash) break;
-      const ang = tries * Math.PI / 4;
-      pts[i].x += 14 * Math.cos(ang) * (tries === 0 ? 1 : 1.2);
-      pts[i].y += 14 * Math.sin(ang) * (tries === 0 ? 1 : 1.2);
-      pts[i].x = Math.min(W - 10, Math.max(10, pts[i].x));
-      pts[i].y = Math.min(H - 10, Math.max(10, pts[i].y));
+  // Stops that would overlap at this zoom (the same place, or several places
+  // a few streets apart on a day that also went far away) share one marker at
+  // their true spot, labelled with their numbers - never nudged elsewhere.
+  const groups = [];
+  pts.forEach(function (p, i) {
+    let g = null;
+    for (let k = 0; k < groups.length; k++) {
+      if (Math.hypot(groups[k].x - p.x, groups[k].y - p.y) < 13) { g = groups[k]; break; }
     }
+    if (g) {
+      g.idx.push(i);
+      g.x += (p.x - g.x) / g.idx.length;
+      g.y += (p.y - g.y) / g.idx.length;
+    } else {
+      groups.push({ x: p.x, y: p.y, idx: [i] });
+    }
+  });
+  function groupLabel(idx) {
+    // "3" | "2-10" when consecutive | "1,3" | "1…9" when it would not fit
+    if (idx.length === 1) return String(idx[0] + 1);
+    let consecutive = true;
+    for (let k = 1; k < idx.length; k++) if (idx[k] !== idx[k - 1] + 1) { consecutive = false; break; }
+    if (consecutive) return (idx[0] + 1) + "-" + (idx[idx.length - 1] + 1);
+    const plain = idx.map(function (i) { return i + 1; }).join(",");
+    return plain.length <= 5 ? plain : (idx[0] + 1) + "…" + (idx[idx.length - 1] + 1);
   }
 
   const svgNS = "http://www.w3.org/2000/svg";
@@ -4159,21 +4172,26 @@ function updateDayCard() {
     path.setAttribute("points", pts.map(function (p) { return p.x.toFixed(1) + "," + p.y.toFixed(1); }).join(" "));
     svg.appendChild(path);
   }
-  pts.forEach(function (p, i) {
-    if (i === from) {
+  groups.forEach(function (g) {
+    const here = from >= 0 && g.idx.indexOf(from) !== -1;
+    const later = from >= 0 && g.idx.every(function (i) { return i > from; });
+    const label = groupLabel(g.idx);
+    const r = Math.max(here ? 9 : 7, 4 + 3.4 * label.length);
+    if (here) {
       const ring = document.createElementNS(svgNS, "circle");
       ring.setAttribute("class", "pulse");
-      ring.setAttribute("cx", p.x); ring.setAttribute("cy", p.y); ring.setAttribute("r", 9);
+      ring.setAttribute("cx", g.x); ring.setAttribute("cy", g.y); ring.setAttribute("r", r);
       svg.appendChild(ring);
     }
     const c = document.createElementNS(svgNS, "circle");
-    c.setAttribute("class", "stop" + (i === from ? " here" : (from >= 0 && i > from ? " later" : "")));
-    c.setAttribute("cx", p.x); c.setAttribute("cy", p.y); c.setAttribute("r", i === from ? 9 : 7);
+    c.setAttribute("class", "stop" + (here ? " here" : (later ? " later" : "")));
+    c.setAttribute("cx", g.x); c.setAttribute("cy", g.y); c.setAttribute("r", r);
     svg.appendChild(c);
     const t = document.createElementNS(svgNS, "text");
     t.setAttribute("class", "num");
-    t.setAttribute("x", p.x); t.setAttribute("y", p.y);
-    t.textContent = String(i + 1);
+    t.setAttribute("x", g.x); t.setAttribute("y", g.y);
+    if (label.length > 3) t.setAttribute("font-size", "7");
+    t.textContent = label;
     svg.appendChild(t);
   });
 

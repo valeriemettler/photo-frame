@@ -284,8 +284,11 @@ numbered dot in time order, joined by a dashed line, the stop you are looking
 at lit in amber (later stops dimmer), and a line above with the time, the
 place and "stop 3 of 9". It only appears when the photo's day has locations;
 a photo with a day but no position of its own says so and shows the day
-without a lit stop. Two stops at the same place (going back later) are nudged
-apart so both numbers can be read. Tap the card and it prepares the full
+without a lit stop. Stops that would overlap at the card's zoom - the same
+place visited twice, or several places a few streets apart on a day that also
+went far away - share one marker at their true spot labelled with their
+numbers ("2-10"), lit if it holds the current stop; nothing is ever moved off
+its real position. Tap the card and it prepares the full
 street map and offers **Open the full map**. The file default is `DAY_CARD`.
 
 **Behind the dots** (a second row in the same Setup section): **Colour map**
@@ -488,7 +491,7 @@ GitHub, then reload the page on the iPad.
 
 | Setting | What it does | Default |
 |---|---|---|
-| `APP_VERSION` | Which build this is; shown at the bottom of Setup. Bump it with every change | `"1.12 - colour map behind the day card"` |
+| `APP_VERSION` | Which build this is; shown at the bottom of Setup. Bump it with every change | `"1.12.1 - day card clusters, no drift"` |
 | `SECONDS_PER_PHOTO` | How long each photo stays up. Also settable on the iPad | `12` |
 | `NOTES_FOLDER` | Sub-folder where voice notes and transcripts are kept | `"_notes"` |
 | `DICTATION` | `true` = type out what you say while recording a note. Also settable on the iPad | `true` |
@@ -652,3 +655,4 @@ do that - a "Map of this day" opened from an old frame will say so at the top.
 | 1.10 | Drawn day map beside the photo (Setup: Off or a corner); tap it for the full map |
 | 1.11 | Faint street map behind the day card's dots (CARTO dark tiles, OpenStreetMap fallback), each tile fetched once and kept on the iPad; Setup switch Street map / Plain |
 | 1.12 | Colour map behind the day card (blue water, beige land, roads); Dark map and Plain remain as choices |
+| 1.12.1 | Day card: overlapping stops share one labelled marker instead of being nudged (which put dots in the sea on zoomed-out days); map area taller |
