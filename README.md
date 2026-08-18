@@ -314,6 +314,26 @@ the same day never asks for the same tile again. A tiny attribution sits in
 the corner of the card, as both tile sources require. The file default is
 `DAY_CARD_MAP`.
 
+### Day card animation
+
+A third row in the same Setup section, **When a photo comes up**, chooses what
+the card does each time the photo changes:
+
+| Choice | What happens |
+|---|---|
+| **Still** | Nothing moves, apart from the gentle pulse on your stop |
+| **Trace** | The route draws itself from stop 1 to the stop you are looking at, the numbers popping in as the line reaches them; later stops stay faint |
+| **Traveller** | A dot walks the route from stop 1 to your stop, the line filling in behind it |
+| **Live replay** | After the trace, a dot keeps sweeping the whole day slowly, again and again, while the photo is up |
+| **Grow in** | The stops appear one by one, in order, yours last |
+| **Photo pin** | A small copy of the photo drops onto the stop where it was taken |
+
+The drawing part is kept short - about two seconds, and never more than half
+the time a photo stays up, so a 3-second setting gets a quicker trace. If the
+iPad has Reduce Motion switched on (Accessibility settings), the card stays
+still whatever is chosen, and Setup says so. The file default is
+`DAY_CARD_ANIMATION`.
+
 ### Behind the photo: soft blur, black, or a photo of your choice
 
 A portrait photo on the landscape screen (or the other way round) leaves space
@@ -503,7 +523,7 @@ GitHub, then reload the page on the iPad.
 
 | Setting | What it does | Default |
 |---|---|---|
-| `APP_VERSION` | Which build this is; shown at the bottom of Setup. Bump it with every change | `"1.13.3 - no distance tag"` |
+| `APP_VERSION` | Which build this is; shown at the bottom of Setup. Bump it with every change | `"1.14 - day card animations"` |
 | `SECONDS_PER_PHOTO` | How long each photo stays up. Also settable on the iPad | `12` |
 | `NOTES_FOLDER` | Sub-folder where voice notes and transcripts are kept | `"_notes"` |
 | `DICTATION` | `true` = type out what you say while recording a note. Also settable on the iPad | `true` |
@@ -516,6 +536,7 @@ GitHub, then reload the page on the iPad.
 | `SWIPE` | `true` = swipe left/right changes photos. Also settable on the iPad | `true` |
 | `DAY_CARD` | `"off"` or a corner (`"top-left"` etc.) for the drawn day map beside the photo. Also settable on the iPad | `"top-left"` |
 | `DAY_CARD_MAP` | `"colour"`, `"dark"` or `"plain"` - what sits behind the day card's dots (cached tiles). Also settable on the iPad | `"colour"` |
+| `DAY_CARD_ANIMATION` | `"still"`, `"trace"`, `"traveller"`, `"replay"`, `"growin"` or `"pin"` - what the day card does when a photo comes up. Also settable on the iPad | `"trace"` |
 | `TRANSITION` | `"fade"`, `"dip"`, `"slide"`, `"zoom"`, `"blur"` or `"random"`. Also settable on the iPad | `"fade"` |
 | `FADE_SECONDS` | Length of the cross-fade. `0` = instant | `1.5` |
 | `CORNER_SHOWS` | What the corner label shows: `"folder"`, `"clock"`, `"folder+clock"`, `"filename"`, `"none"` | `"folder"` |
@@ -672,3 +693,4 @@ do that - a "Map of this day" opened from an old frame will say so at the top.
 | 1.13.1 | The distance next to a far stop is a readable tag (the outlined text smudged on the iPad) |
 | 1.13.2 | Distances measured from the photo on screen; a photo taken at a far stop frames that stop instead |
 | 1.13.3 | Distance tag removed - the edge marker and arrowhead say enough |
+| 1.14 | Day card animation: Still, Trace, Traveller, Live replay, Grow in, Photo pin |

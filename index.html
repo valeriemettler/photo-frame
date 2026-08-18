@@ -278,6 +278,22 @@
   #dayCard .num { fill: #fff; font-size: 8px; font-weight: 700; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
   #dayCard .far { fill: #fff; opacity: 0.9; }
   #dayCard.map-colour .far { fill: #1e3250; }
+  /* Animation pieces */
+  #dayCard .trace { stroke: #d99a1c; stroke-width: 2.4; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+  #dayCard .traveller { fill: #d99a1c; stroke: #fff; stroke-width: 1.5; }
+  #dayCard .replay { stroke: #2f7de1; stroke-width: 2.4; fill: none; stroke-linecap: round; stroke-linejoin: round; opacity: 0.9; }
+  #dayCard .replaydot { fill: #2f7de1; stroke: #fff; stroke-width: 1.5; }
+  #dayCard .marker.hidden { opacity: 0; }
+  #dayCard .marker { transition: opacity 0.25s ease, transform 0.25s ease; transform-origin: center; transform-box: fill-box; }
+  #dayCard .marker.pop { animation: markerPop 0.35s ease-out; }
+  @keyframes markerPop { 0% { transform: scale(0.3); } 70% { transform: scale(1.25); } 100% { transform: scale(1); } }
+  #dayCard .pin { filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5)); }
+  #dayCard .pin.drop { animation: pinDrop 0.5s cubic-bezier(.2,.8,.3,1.2); transform-origin: center; transform-box: fill-box; }
+  @keyframes pinDrop { 0% { transform: translateY(-40px) scale(0.6); opacity: 0; } 100% { transform: none; opacity: 1; } }
+  #dayCard .pinframe { fill: none; stroke: #fff; stroke-width: 2; }
+  @media (prefers-reduced-motion: reduce) {
+    #dayCard .marker.pop, #dayCard .pin.drop { animation: none; }
+  }
   #dayCard .pulse { fill: none; stroke: #d99a1c; stroke-width: 1.5; opacity: 0.8; transform-origin: center; transform-box: fill-box;
                     animation: cardPulse 2.2s ease-out infinite; }
   @keyframes cardPulse { 0% { transform: scale(0.6); opacity: 0.9; } 100% { transform: scale(2.4); opacity: 0; } }
@@ -644,6 +660,9 @@
       <div id="dayCardPicker" class="pills"></div>
       <p class="help" style="margin-top:10px">Behind the dots:</p>
       <div id="dayCardBgPicker" class="pills"></div>
+      <p class="help" style="margin-top:10px">When a photo comes up:</p>
+      <div id="dayCardAnimPicker" class="pills"></div>
+      <p class="help" id="dayCardAnimHelp"></p>
 
       <h3>Voice notes</h3>
       <p class="help">Tap <strong>Record note</strong> on the frame to talk about the photo on screen. The recording is saved next to your photos in Dropbox, in a <code>_notes</code> folder, and <strong>Info</strong> plays it back. If dictation works on this iPad, a typed-out version is saved too.</p>
@@ -737,7 +756,7 @@
 // Which build this is. Shown at the bottom of Setup under "What the frame
 // currently has", so you can tell whether the iPad has the latest one.
 // Bumped with every change that reaches the iPad.
-const APP_VERSION = "1.13.3 - no distance tag";
+const APP_VERSION = "1.14 - day card animations";
 
 
 /* --- How the slideshow behaves ----------------------------------------- */
@@ -768,6 +787,17 @@ const SWIPE = true;
 // The drawn day map beside the photo: "off", or the corner it sits in -
 // "top-left", "top-right", "bottom-left", "bottom-right". Settable on the iPad.
 const DAY_CARD = "top-left";
+
+// What the day card does when a photo comes up. One of:
+//   "still"      nothing moves (except the gentle pulse on your stop)
+//   "trace"      the route draws itself from stop 1 to your stop
+//   "traveller"  a dot walks the route from stop 1 to your stop
+//   "replay"     after the trace, a dot keeps sweeping the whole day
+//   "growin"     the stops appear one by one, in order
+//   "pin"        a small copy of the photo drops onto its stop
+// Settable on the iPad. Reduce Motion (in the iPad's Accessibility settings)
+// falls back to "still".
+const DAY_CARD_ANIMATION = "trace";
 
 // What sits behind the dots on the day card: "colour" = a street map in
 // colour (blue water, beige land, white and orange roads), "dark" = the same
@@ -2876,6 +2906,17 @@ function renderPickers() {
     renderPickers();
   });
 
+  renderPills($("dayCardAnimPicker"), Object.keys(DAY_CARD_ANIMATIONS).map(function (k) {
+    return { value: k, label: DAY_CARD_ANIMATIONS[k].label };
+  }), dayCardAnimation(), function (value) {
+    store.dayCardAnimation = value;
+    saveStore(store);
+    renderPickers();
+    updateDayCard();          // shows the new one straight away
+  });
+  $("dayCardAnimHelp").textContent = DAY_CARD_ANIMATIONS[dayCardAnimation()].help
+    + (prefersLessMotion() ? " (This iPad has Reduce Motion on, so the card stays still.)" : "");
+
   renderPills($("swipePicker"), [
     { value: "on",  label: "Swipe on" },
     { value: "off", label: "Swipe off" }
@@ -4132,6 +4173,169 @@ function frameDay(stops, W, H, PAD, fromIndex) {
   return { z: z, left: left, top: top, pts: pts };
 }
 
+const DAY_CARD_ANIMATIONS = {
+  still:     { label: "Still",        help: "Nothing moves, apart from the gentle pulse on your stop." },
+  trace:     { label: "Trace",        help: "The route draws itself from stop 1 to the stop you are looking at." },
+  traveller: { label: "Traveller",    help: "A dot walks the route from stop 1 to your stop, the line filling in behind it." },
+  replay:    { label: "Live replay",  help: "After the trace, a dot keeps sweeping the whole day, slowly, while the photo is up." },
+  growin:    { label: "Grow in",      help: "The stops appear one by one, in order, yours last." },
+  pin:       { label: "Photo pin",    help: "A small copy of the photo drops onto the stop where it was taken." }
+};
+function dayCardAnimation() {
+  const v = store.dayCardAnimation || DAY_CARD_ANIMATION || "still";
+  return DAY_CARD_ANIMATIONS[v] ? v : "still";
+}
+
+// One animation runs at a time; a new photo cancels the last one.
+let dayCardAnim = { raf: null, timers: [] };
+function stopDayCardAnimation() {
+  if (dayCardAnim.raf) cancelAnimationFrame(dayCardAnim.raf);
+  dayCardAnim.timers.forEach(clearTimeout);
+  dayCardAnim = { raf: null, timers: [] };
+}
+function later(fn, ms) { const t = setTimeout(fn, ms); dayCardAnim.timers.push(t); return t; }
+
+// Length of the route up to each stop, so the trace can move at one speed.
+function routeLengths(pts) {
+  const acc = [0];
+  for (let i = 1; i < pts.length; i++) acc.push(acc[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
+  return acc;
+}
+// The point a given distance along the route.
+function pointAlong(pts, acc, dist) {
+  if (dist <= 0) return { x: pts[0].x, y: pts[0].y };
+  for (let i = 1; i < pts.length; i++) {
+    if (dist <= acc[i]) {
+      const seg = acc[i] - acc[i - 1] || 1e-9;
+      const t = (dist - acc[i - 1]) / seg;
+      return { x: pts[i - 1].x + (pts[i].x - pts[i - 1].x) * t, y: pts[i - 1].y + (pts[i].y - pts[i - 1].y) * t };
+    }
+  }
+  const l = pts[pts.length - 1];
+  return { x: l.x, y: l.y };
+}
+
+// How long the drawing part may take: fit inside the time the photo is up.
+function animBudgetMs() {
+  const dwell = secondsPerPhoto() * 1000;
+  return Math.max(500, Math.min(2200, dwell * 0.5));
+}
+
+// Run the chosen animation over a freshly drawn card.
+//   svg     the card's drawing
+//   pts     one point per stop, in day order
+//   from    index of the stop the photo belongs to (or -1)
+//   markers one <g> per drawn marker group, each with .idx (stop indexes)
+function animateDayCard(svg, pts, from, markers, mode) {
+  stopDayCardAnimation();
+  if (mode === "still" || prefersLessMotion() || pts.length === 0) return;
+  const svgNS = "http://www.w3.org/2000/svg";
+  const acc = routeLengths(pts);
+  const upTo = from >= 0 ? from : pts.length - 1;
+  const total = acc[upTo];
+  const budget = animBudgetMs();
+
+  function markerFor(i) { return markers.find(function (m) { return m.idx.indexOf(i) !== -1; }); }
+  function reveal(i) {
+    const m = markerFor(i);
+    if (!m || !m.el.classList.contains("hidden")) return;
+    m.el.classList.remove("hidden");
+    m.el.classList.add("pop");
+  }
+
+  if (mode === "growin") {
+    markers.forEach(function (m) { m.el.classList.add("hidden"); });
+    const n = upTo + 1;
+    const step = Math.max(120, Math.min(450, budget / n));
+    for (let i = 0; i <= upTo; i++) later(function () { reveal(i); }, 150 + i * step);
+    // Everything after your stop shows quietly at the end.
+    later(function () { markers.forEach(function (m) { m.el.classList.remove("hidden"); }); }, 150 + n * step + 200);
+    return;
+  }
+
+  if (mode === "pin") {
+    if (from < 0) return;
+    const p = pts[from];
+    const src = visibleLayer && visibleLayer.src;
+    if (!src) return;
+    const g = document.createElementNS(svgNS, "g");
+    g.setAttribute("class", "pin drop");
+    const size = 34;
+    const img = document.createElementNS(svgNS, "image");
+    img.setAttribute("href", src);
+    img.setAttribute("x", p.x - size / 2); img.setAttribute("y", p.y - size - 12);
+    img.setAttribute("width", size); img.setAttribute("height", size);
+    img.setAttribute("preserveAspectRatio", "xMidYMid slice");
+    const frame = document.createElementNS(svgNS, "rect");
+    frame.setAttribute("class", "pinframe");
+    frame.setAttribute("x", p.x - size / 2); frame.setAttribute("y", p.y - size - 12);
+    frame.setAttribute("width", size); frame.setAttribute("height", size); frame.setAttribute("rx", 4);
+    const stem = document.createElementNS(svgNS, "polygon");
+    stem.setAttribute("class", "pinframe");
+    stem.setAttribute("style", "fill:#fff");
+    stem.setAttribute("points", [p.x - 4, p.y - 12, p.x + 4, p.y - 12, p.x, p.y - 5].join(" "));
+    g.appendChild(img); g.appendChild(frame); g.appendChild(stem);
+    svg.appendChild(g);
+    return;
+  }
+
+  // trace / traveller / replay share the moving line.
+  if (pts.length < 2 || total <= 0) return;
+  const line = document.createElementNS(svgNS, "polyline");
+  line.setAttribute("class", "trace");
+  svg.insertBefore(line, svg.querySelector(".marker") || null);
+  let dot = null;
+  if (mode === "traveller" || mode === "replay") {
+    dot = document.createElementNS(svgNS, "circle");
+    dot.setAttribute("class", "traveller"); dot.setAttribute("r", 5);
+    svg.appendChild(dot);
+  }
+  // Markers past stop 1 appear as the line reaches them.
+  markers.forEach(function (m) { if (m.idx.some(function (i) { return i > 0 && i <= upTo; }) && !m.idx.some(function (i) { return i === 0; })) m.el.classList.add("hidden"); });
+
+  const t0 = performance.now();
+  const dur = Math.max(400, Math.min(budget, 350 + total * 6));
+  function frame(now) {
+    const t = Math.min(1, (now - t0) / dur);
+    const e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;    // ease in-out
+    const d = total * e;
+    const head = pointAlong(pts, acc, d);
+    const shown = [];
+    for (let i = 0; i <= upTo && acc[i] <= d; i++) { shown.push(pts[i].x.toFixed(1) + "," + pts[i].y.toFixed(1)); reveal(i); }
+    shown.push(head.x.toFixed(1) + "," + head.y.toFixed(1));
+    line.setAttribute("points", shown.join(" "));
+    if (dot) { dot.setAttribute("cx", head.x); dot.setAttribute("cy", head.y); }
+    if (t < 1) { dayCardAnim.raf = requestAnimationFrame(frame); return; }
+    reveal(upTo);
+    if (mode === "replay") startReplay(); else if (dot) dot.remove();
+  }
+  dayCardAnim.raf = requestAnimationFrame(frame);
+
+  // Live replay: a slower dot keeps sweeping the whole day, again and again.
+  function startReplay() {
+    const whole = acc[pts.length - 1];
+    if (whole <= 0) return;
+    const rl = document.createElementNS(svgNS, "polyline");
+    rl.setAttribute("class", "replay");
+    svg.insertBefore(rl, line);
+    if (dot) { dot.setAttribute("class", "replaydot"); }
+    const cycle = Math.max(3000, Math.min(9000, whole * 25));
+    let start = performance.now() + 500;
+    function loop(now) {
+      const t = ((now - start) % cycle) / cycle;
+      const dd = whole * (now < start ? 0 : t);
+      const head = pointAlong(pts, acc, dd);
+      const shown = [];
+      for (let i = 0; i < pts.length && acc[i] <= dd; i++) shown.push(pts[i].x.toFixed(1) + "," + pts[i].y.toFixed(1));
+      shown.push(head.x.toFixed(1) + "," + head.y.toFixed(1));
+      rl.setAttribute("points", shown.join(" "));
+      if (dot) { dot.setAttribute("cx", head.x); dot.setAttribute("cy", head.y); }
+      dayCardAnim.raf = requestAnimationFrame(loop);
+    }
+    dayCardAnim.raf = requestAnimationFrame(loop);
+  }
+}
+
 let dayCardOfferTimer = null;
 function updateDayCard() {
   const card = $("dayCard");
@@ -4140,6 +4344,7 @@ function updateDayCard() {
   card.classList.remove("offering");
   $("dayCardOpen").innerHTML = "";
   clearTimeout(dayCardOfferTimer);
+  stopDayCardAnimation();
   if (corner === "off" || !photo || photo.kind !== "dropbox") { card.className = ""; return; }
   const day = photoDay(photo);
   const stops = day ? dayCardStops(day) : [];
@@ -4225,27 +4430,30 @@ function updateDayCard() {
     path.setAttribute("points", pts.map(function (p) { return p.x.toFixed(1) + "," + p.y.toFixed(1); }).join(" "));
     svg.appendChild(path);
   }
+  const markers = [];
   groups.forEach(function (g) {
     const here = from >= 0 && g.idx.indexOf(from) !== -1;
-    const later = from >= 0 && g.idx.every(function (i) { return i > from; });
+    const isLater = from >= 0 && g.idx.every(function (i) { return i > from; });
     const label = groupLabel(g.idx);
     const r = Math.max(here ? 9 : 7, 4 + 3.4 * label.length);
+    const wrap = document.createElementNS(svgNS, "g");
+    wrap.setAttribute("class", "marker");
     if (here) {
       const ring = document.createElementNS(svgNS, "circle");
       ring.setAttribute("class", "pulse");
       ring.setAttribute("cx", g.x); ring.setAttribute("cy", g.y); ring.setAttribute("r", r);
-      svg.appendChild(ring);
+      wrap.appendChild(ring);
     }
     const c = document.createElementNS(svgNS, "circle");
-    c.setAttribute("class", "stop" + (here ? " here" : (later ? " later" : "")));
+    c.setAttribute("class", "stop" + (here ? " here" : (isLater ? " later" : "")));
     c.setAttribute("cx", g.x); c.setAttribute("cy", g.y); c.setAttribute("r", r);
-    svg.appendChild(c);
+    wrap.appendChild(c);
     const t = document.createElementNS(svgNS, "text");
     t.setAttribute("class", "num");
     t.setAttribute("x", g.x); t.setAttribute("y", g.y);
     if (label.length > 3) t.setAttribute("font-size", "7");
     t.textContent = label;
-    svg.appendChild(t);
+    wrap.appendChild(t);
     if (g.far) {
       // A little arrowhead pointing off the map.
       const ax = g.x + g.dx * (r + 6), ay = g.y + g.dy * (r + 6);
@@ -4254,11 +4462,14 @@ function updateDayCard() {
       tri.setAttribute("class", "far");
       tri.setAttribute("points", [ax + g.dx * 5, ay + g.dy * 5, ax + px * 3.5, ay + py * 3.5, ax - px * 3.5, ay - py * 3.5]
         .map(function (v) { return v.toFixed(1); }).join(" "));
-      svg.appendChild(tri);
+      wrap.appendChild(tri);
     }
+    svg.appendChild(wrap);
+    markers.push({ el: wrap, idx: g.idx });
   });
 
   card.className = "corner-" + corner + " showing" + (card.dataset.map === "colour" ? " map-colour" : "");
+  animateDayCard(svg, pts, from, markers, dayCardAnimation());
 }
 
 // Tapping the card offers the full street map. The link takes a moment to
