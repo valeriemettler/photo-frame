@@ -277,10 +277,12 @@
   #dayCard .stop.here { fill: #d99a1c; }
   #dayCard .num { fill: #fff; font-size: 8px; font-weight: 700; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
   #dayCard .far { fill: #fff; opacity: 0.9; }
-  #dayCard .fardist { fill: #fff; font-size: 7px; font-weight: 600; text-anchor: middle; dominant-baseline: central;
-                      paint-order: stroke; stroke: rgba(0,0,0,0.55); stroke-width: 2px; }
+  /* Distance to a far stop: a small tag, not outlined text (that smudged). */
+  #dayCard .tag { fill: rgba(0, 0, 0, 0.62); }
+  #dayCard .tagtext { fill: #fff; font-size: 8.5px; font-weight: 600; text-anchor: middle; dominant-baseline: central; }
   #dayCard.map-colour .far { fill: #1e3250; }
-  #dayCard.map-colour .fardist { fill: #1e3250; stroke: rgba(255,255,255,0.8); }
+  #dayCard.map-colour .tag { fill: rgba(255, 255, 255, 0.92); }
+  #dayCard.map-colour .tagtext { fill: #1e3250; }
   #dayCard .pulse { fill: none; stroke: #d99a1c; stroke-width: 1.5; opacity: 0.8; transform-origin: center; transform-box: fill-box;
                     animation: cardPulse 2.2s ease-out infinite; }
   @keyframes cardPulse { 0% { transform: scale(0.6); opacity: 0.9; } 100% { transform: scale(2.4); opacity: 0; } }
@@ -740,7 +742,7 @@
 // Which build this is. Shown at the bottom of Setup under "What the frame
 // currently has", so you can tell whether the iPad has the latest one.
 // Bumped with every change that reaches the iPad.
-const APP_VERSION = "1.13 - day card frames the day, points at far stops";
+const APP_VERSION = "1.13.1 - readable distance tags";
 
 
 /* --- How the slideshow behaves ----------------------------------------- */
@@ -4242,10 +4244,21 @@ function updateDayCard() {
       tri.setAttribute("points", [ax + g.dx * 5, ay + g.dy * 5, ax + px * 3.5, ay + py * 3.5, ax - px * 3.5, ay - py * 3.5]
         .map(function (v) { return v.toFixed(1); }).join(" "));
       svg.appendChild(tri);
+      const words = g.km >= 10 ? Math.round(g.km) + " km" : (g.km >= 1 ? g.km.toFixed(1) + " km" : Math.round(g.km * 1000) + " m");
+      const tw = 8 + words.length * 4.9, th = 13;
+      // Inward from the marker, and kept fully inside the map area.
+      let lx = g.x - g.dx * (r + 6 + tw / 2), ly = g.y - g.dy * (r + 6 + th / 2);
+      lx = Math.min(W - tw / 2 - 2, Math.max(tw / 2 + 2, lx));
+      ly = Math.min(H - th / 2 - 2, Math.max(th / 2 + 2, ly));
+      const tag = document.createElementNS(svgNS, "rect");
+      tag.setAttribute("class", "tag");
+      tag.setAttribute("x", lx - tw / 2); tag.setAttribute("y", ly - th / 2);
+      tag.setAttribute("width", tw); tag.setAttribute("height", th); tag.setAttribute("rx", 6.5);
+      svg.appendChild(tag);
       const d = document.createElementNS(svgNS, "text");
-      d.setAttribute("class", "fardist");
-      d.setAttribute("x", g.x - g.dx * (r + 12)); d.setAttribute("y", g.y - g.dy * (r + 12));
-      d.textContent = g.km >= 10 ? Math.round(g.km) + " km" : (g.km >= 1 ? g.km.toFixed(1) + " km" : Math.round(g.km * 1000) + " m");
+      d.setAttribute("class", "tagtext");
+      d.setAttribute("x", lx); d.setAttribute("y", ly);
+      d.textContent = words;
       svg.appendChild(d);
     }
   });

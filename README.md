@@ -501,7 +501,7 @@ GitHub, then reload the page on the iPad.
 
 | Setting | What it does | Default |
 |---|---|---|
-| `APP_VERSION` | Which build this is; shown at the bottom of Setup. Bump it with every change | `"1.13 - day card frames the day, points at far stops"` |
+| `APP_VERSION` | Which build this is; shown at the bottom of Setup. Bump it with every change | `"1.13.1 - readable distance tags"` |
 | `SECONDS_PER_PHOTO` | How long each photo stays up. Also settable on the iPad | `12` |
 | `NOTES_FOLDER` | Sub-folder where voice notes and transcripts are kept | `"_notes"` |
 | `DICTATION` | `true` = type out what you say while recording a note. Also settable on the iPad | `true` |
@@ -667,3 +667,4 @@ do that - a "Map of this day" opened from an old frame will say so at the top.
 | 1.12 | Colour map behind the day card (blue water, beige land, roads); Dark map and Plain remain as choices |
 | 1.12.1 | Day card: overlapping stops share one labelled marker instead of being nudged (which put dots in the sea on zoomed-out days); map area taller |
 | 1.13 | Day card frames the main area of the day and points at far stops from the edge with their distance, instead of zooming out to a speck |
+| 1.13.1 | The distance next to a far stop is a readable tag (the outlined text smudged on the iPad) |
