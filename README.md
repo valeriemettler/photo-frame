@@ -296,7 +296,10 @@ airport, another town, the city you flew from) would force the map out until
 that area is a speck, it frames the area instead - the busiest stops that fit
 together at the most detailed zoom that still holds most of the day's photos,
 as long as no more than two stops are left out - and shows the far stops at
-the edge in their true direction, with an arrowhead and the distance ("29 km").
+the edge in their true direction, with an arrowhead and the distance ("29 km")
+measured from where the photo on screen was taken. If that photo was itself
+taken at a far stop, the card frames that stop's surroundings instead and
+points at the rest of the day.
 Note that a photo taken on the beach or a marina walkway has its GPS at the
 waterline, so its marker can sit on the blue; that is where the phone was. Tap the card and it prepares the full
 street map and offers **Open the full map**. The file default is `DAY_CARD`.
@@ -501,7 +504,7 @@ GitHub, then reload the page on the iPad.
 
 | Setting | What it does | Default |
 |---|---|---|
-| `APP_VERSION` | Which build this is; shown at the bottom of Setup. Bump it with every change | `"1.13.1 - readable distance tags"` |
+| `APP_VERSION` | Which build this is; shown at the bottom of Setup. Bump it with every change | `"1.13.2 - distances from this photo"` |
 | `SECONDS_PER_PHOTO` | How long each photo stays up. Also settable on the iPad | `12` |
 | `NOTES_FOLDER` | Sub-folder where voice notes and transcripts are kept | `"_notes"` |
 | `DICTATION` | `true` = type out what you say while recording a note. Also settable on the iPad | `true` |
@@ -668,3 +671,4 @@ do that - a "Map of this day" opened from an old frame will say so at the top.
 | 1.12.1 | Day card: overlapping stops share one labelled marker instead of being nudged (which put dots in the sea on zoomed-out days); map area taller |
 | 1.13 | Day card frames the main area of the day and points at far stops from the edge with their distance, instead of zooming out to a speck |
 | 1.13.1 | The distance next to a far stop is a readable tag (the outlined text smudged on the iPad) |
+| 1.13.2 | Distances measured from the photo on screen; a photo taken at a far stop frames that stop instead |

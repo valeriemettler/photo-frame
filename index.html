@@ -742,7 +742,7 @@
 // Which build this is. Shown at the bottom of Setup under "What the frame
 // currently has", so you can tell whether the iPad has the latest one.
 // Bumped with every change that reaches the iPad.
-const APP_VERSION = "1.13.1 - readable distance tags";
+const APP_VERSION = "1.13.2 - distances from this photo";
 
 
 /* --- How the slideshow behaves ----------------------------------------- */
@@ -4066,7 +4066,7 @@ async function loadTile(img, sources, token) {
 // is a speck, frame the area instead - the busiest stops that fit together at
 // the most detailed zoom that still holds most of the day's photos - and
 // point at the far stops from the edge, with their distance.
-function frameDay(stops, W, H, PAD) {
+function frameDay(stops, W, H, PAD, fromIndex) {
   const ZMAX = 17;
   const total = stops.reduce(function (n, st) { return n + st.n; }, 0) || 1;
   const all = stops.map(function (_, i) { return i; });
@@ -4093,6 +4093,20 @@ function frameDay(stops, W, H, PAD) {
       // a couple of stops to point at from the edge.
       if (share >= 0.6 && stops.length - c.length <= 2) { z = zz; core = c; break; }
     }
+    // The photo on screen was taken at one of the far stops? Then frame that
+    // stop's own surroundings instead, and point at the rest of the day.
+    if (fromIndex >= 0 && core.indexOf(fromIndex) === -1) {
+      const near = all.slice().sort(function (a, b) {
+        return metresBetween(stops[fromIndex], stops[a]) - metresBetween(stops[fromIndex], stops[b]);
+      });
+      let picked = null;
+      for (let zz = 16; zz > fitAll + 1; zz--) {
+        const c = [fromIndex];
+        for (let k = 0; k < near.length; k++) if (near[k] !== fromIndex && fits(c.concat([near[k]]), zz)) c.push(near[k]);
+        if (c.length >= 2 || zz === 16) { picked = { z: zz, core: c }; if (c.length >= 2) break; }
+      }
+      if (picked) { z = picked.z; core = picked.core; }
+    }
   }
   const xs = stops.map(function (st) { return mercX(st.lon, z); });
   const ys = stops.map(function (st) { return mercY(st.lat, z); });
@@ -4100,9 +4114,11 @@ function frameDay(stops, W, H, PAD) {
   core.forEach(function (i) { minX = Math.min(minX, xs[i]); maxX = Math.max(maxX, xs[i]); minY = Math.min(minY, ys[i]); maxY = Math.max(maxY, ys[i]); });
   const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
   const left = cx - W / 2, top = cy - H / 2;
-  // The centre, back in degrees, for distances to the far stops.
+  // Distances to the far stops are measured from the photo on screen when it
+  // has a place of its own, otherwise from the middle of the map.
   const world = 256 * Math.pow(2, z);
-  const centre = { lon: cx / world * 360 - 180, lat: Math.atan(Math.sinh(Math.PI * (1 - 2 * cy / world))) * 180 / Math.PI };
+  const centre = (fromIndex >= 0 && core.indexOf(fromIndex) !== -1) ? stops[fromIndex]
+    : { lon: cx / world * 360 - 180, lat: Math.atan(Math.sinh(Math.PI * (1 - 2 * cy / world))) * 180 / Math.PI };
   const pts = stops.map(function (st, i) {
     const p = { x: xs[i] - left, y: ys[i] - top, far: false, dx: 0, dy: 0, km: 0 };
     if (core.indexOf(i) === -1) {
@@ -4153,7 +4169,7 @@ function updateDayCard() {
   const token = ++dayCardRender;
   const tilesBox = $("dayCardTiles");
   tilesBox.innerHTML = "";
-  const frame = frameDay(stops, W, H, PAD);
+  const frame = frameDay(stops, W, H, PAD, from);
   const pts = frame.pts;
   if (dayCardStreetsOn()) {
     const z = frame.z, left = frame.left, top = frame.top;
