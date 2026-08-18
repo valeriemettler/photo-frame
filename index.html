@@ -265,6 +265,12 @@
   #dayCard .tiles img.osmdark { filter: invert(1) hue-rotate(180deg) brightness(0.55) saturate(0.4); }
   #dayCard svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
   #dayCard .attr { position: absolute; right: 5px; bottom: 2px; font-size: 8px; opacity: 0.6; pointer-events: none; }
+  /* On the colour map the drawing needs dark lines and a legible credit. */
+  #dayCard.map-colour .mapwrap { background: #ece6dc; }
+  #dayCard.map-colour .tiles img { opacity: 1; }
+  #dayCard.map-colour .leg { stroke: rgba(20, 30, 50, 0.75); }
+  #dayCard.map-colour .stop.later { opacity: 0.6; }
+  #dayCard.map-colour .attr { color: #222; background: rgba(255,255,255,0.75); border-radius: 4px; padding: 0 3px; opacity: 1; text-shadow: none; }
   #dayCard .leg { stroke: rgba(255,255,255,0.55); stroke-width: 1.5; fill: none; stroke-dasharray: 3 3; }
   #dayCard .stop { fill: #2f7de1; stroke: #fff; stroke-width: 1.2; }
   #dayCard .stop.later { fill: #2f7de1; opacity: 0.45; }
@@ -729,7 +735,7 @@
 // Which build this is. Shown at the bottom of Setup under "What the frame
 // currently has", so you can tell whether the iPad has the latest one.
 // Bumped with every change that reaches the iPad.
-const APP_VERSION = "1.11 - streets behind the day map";
+const APP_VERSION = "1.12 - colour map behind the day card";
 
 
 /* --- How the slideshow behaves ----------------------------------------- */
@@ -761,10 +767,12 @@ const SWIPE = true;
 // "top-left", "top-right", "bottom-left", "bottom-right". Settable on the iPad.
 const DAY_CARD = "top-left";
 
-// true = faint street map behind the dots (tiles from CARTO, OpenStreetMap as
-// fallback; each tile is fetched once and kept on the iPad). false = plain.
+// What sits behind the dots on the day card: "colour" = a street map in
+// colour (blue water, beige land, white and orange roads), "dark" = the same
+// map in near-black, "plain" = no map. Tiles come from CARTO with
+// OpenStreetMap as fallback; each tile is fetched once and kept on the iPad.
 // Settable on the iPad.
-const DAY_CARD_STREETS = true;
+const DAY_CARD_MAP = "colour";
 
 // How long the change between two photos takes, in seconds.
 // 0 = instant switch. 1.5 is gentle.
@@ -2855,10 +2863,12 @@ function renderPickers() {
   });
 
   renderPills($("dayCardBgPicker"), [
-    { value: "streets", label: "Street map" },
-    { value: "plain",   label: "Plain" }
-  ], dayCardStreetsOn() ? "streets" : "plain", function (value) {
-    store.dayCardStreets = value === "streets";
+    { value: "colour", label: "Colour map" },
+    { value: "dark",   label: "Dark map" },
+    { value: "plain",  label: "Plain" }
+  ], dayCardMapStyle(), function (value) {
+    store.dayCardMap = value;
+    delete store.dayCardStreets;
     saveStore(store);
     updateDayCard();
     renderPickers();
@@ -3944,9 +3954,13 @@ function dayCardStops(day) {
 }
 function forgetDayCardCache() { Object.keys(dayCardCache).forEach(function (k) { delete dayCardCache[k]; }); }
 
-function dayCardStreetsOn() {
-  return store.dayCardStreets === undefined ? !!DAY_CARD_STREETS : !!store.dayCardStreets;
+// "colour" | "dark" | "plain"
+function dayCardMapStyle() {
+  if (store.dayCardMap === "colour" || store.dayCardMap === "dark" || store.dayCardMap === "plain") return store.dayCardMap;
+  if (store.dayCardStreets !== undefined) return store.dayCardStreets ? "colour" : "plain";   // older switch
+  return DAY_CARD_MAP || "colour";
 }
+function dayCardStreetsOn() { return dayCardMapStyle() !== "plain"; }
 
 // Web Mercator, in pixels at zoom z (256-pixel tiles) - the projection map
 // tiles are drawn in, so dots and streets line up.
@@ -4014,12 +4028,19 @@ async function tileSrc(url) {
     const o = URL.createObjectURL(blob); rememberTile(url, o); return o;
   } catch (e) { return ""; }
 }
-// Where a tile can come from, in order of preference.
+// Where a tile can come from, in order of preference, for the chosen style.
 function tileSources(z, x, y) {
   const sub = "abcd"[(x + y) % 4];
+  const osm = "https://tile.openstreetmap.org/" + z + "/" + x + "/" + y + ".png";
+  if (dayCardMapStyle() === "dark") {
+    return [
+      { url: "https://" + sub + ".basemaps.cartocdn.com/dark_nolabels/" + z + "/" + x + "/" + y + "@2x.png", cls: "" },
+      { url: osm, cls: "osmdark" }
+    ];
+  }
   return [
-    { url: "https://" + sub + ".basemaps.cartocdn.com/dark_nolabels/" + z + "/" + x + "/" + y + "@2x.png", cls: "" },
-    { url: "https://tile.openstreetmap.org/" + z + "/" + x + "/" + y + ".png", cls: "osmdark" }
+    { url: "https://" + sub + ".basemaps.cartocdn.com/rastertiles/voyager_nolabels/" + z + "/" + x + "/" + y + "@2x.png", cls: "" },
+    { url: osm, cls: "" }
   ];
 }
 let dayCardRender = 0;              // bumps on every redraw so late tiles are dropped
@@ -4096,7 +4117,9 @@ function updateDayCard() {
       }
     }
     $("dayCardAttr").textContent = "© OpenStreetMap · © CARTO";
+    card.dataset.map = dayCardMapStyle();
   } else {
+    card.dataset.map = "plain";
     // Plain: longitude squeezed by the latitude so shapes are not stretched,
     // everything scaled to fit with a margin.
     const k = Math.cos(stops[0].lat * Math.PI / 180) || 1;
@@ -4154,7 +4177,7 @@ function updateDayCard() {
     svg.appendChild(t);
   });
 
-  card.className = "corner-" + corner + " showing";
+  card.className = "corner-" + corner + " showing" + (card.dataset.map === "colour" ? " map-colour" : "");
 }
 
 // Tapping the card offers the full street map. The link takes a moment to

@@ -288,15 +288,16 @@ without a lit stop. Two stops at the same place (going back later) are nudged
 apart so both numbers can be read. Tap the card and it prepares the full
 street map and offers **Open the full map**. The file default is `DAY_CARD`.
 
-**Behind the dots** (a second row in the same Setup section): **Street map**
-puts a faint dark street map under the dots - tiles from CARTO's dark basemap,
-with OpenStreetMap's standard tiles darkened as a fallback - or **Plain** for
+**Behind the dots** (a second row in the same Setup section): **Colour map**
+puts a street map in colour under the dots - blue water, beige land, white and
+orange roads, no labels (CARTO's Voyager basemap, OpenStreetMap's standard
+tiles as fallback); **Dark map** is the same map in near-black; **Plain** is
 the dots on a dark card. Because the frame runs all day, tiles are treated
 carefully: each one is fetched from the internet once and kept twice over -
 in memory for the session, and in the iPad's own store across restarts - so
 the same day never asks for the same tile again. A tiny attribution sits in
 the corner of the card, as both tile sources require. The file default is
-`DAY_CARD_STREETS`.
+`DAY_CARD_MAP`.
 
 ### Behind the photo: soft blur, black, or a photo of your choice
 
@@ -487,7 +488,7 @@ GitHub, then reload the page on the iPad.
 
 | Setting | What it does | Default |
 |---|---|---|
-| `APP_VERSION` | Which build this is; shown at the bottom of Setup. Bump it with every change | `"1.11 - streets behind the day map"` |
+| `APP_VERSION` | Which build this is; shown at the bottom of Setup. Bump it with every change | `"1.12 - colour map behind the day card"` |
 | `SECONDS_PER_PHOTO` | How long each photo stays up. Also settable on the iPad | `12` |
 | `NOTES_FOLDER` | Sub-folder where voice notes and transcripts are kept | `"_notes"` |
 | `DICTATION` | `true` = type out what you say while recording a note. Also settable on the iPad | `true` |
@@ -499,7 +500,7 @@ GitHub, then reload the page on the iPad.
 | `BACKDROP` | `"blur"`, `"black"` or `"photo"` - what fills the space beside a photo. Also settable on the iPad | `"blur"` |
 | `SWIPE` | `true` = swipe left/right changes photos. Also settable on the iPad | `true` |
 | `DAY_CARD` | `"off"` or a corner (`"top-left"` etc.) for the drawn day map beside the photo. Also settable on the iPad | `"top-left"` |
-| `DAY_CARD_STREETS` | `true` = faint street map behind the day card's dots (cached tiles). Also settable on the iPad | `true` |
+| `DAY_CARD_MAP` | `"colour"`, `"dark"` or `"plain"` - what sits behind the day card's dots (cached tiles). Also settable on the iPad | `"colour"` |
 | `TRANSITION` | `"fade"`, `"dip"`, `"slide"`, `"zoom"`, `"blur"` or `"random"`. Also settable on the iPad | `"fade"` |
 | `FADE_SECONDS` | Length of the cross-fade. `0` = instant | `1.5` |
 | `CORNER_SHOWS` | What the corner label shows: `"folder"`, `"clock"`, `"folder+clock"`, `"filename"`, `"none"` | `"folder"` |
@@ -650,3 +651,4 @@ do that - a "Map of this day" opened from an old frame will say so at the top.
 | 1.9.2 | Forget my photo button under Behind the photo |
 | 1.10 | Drawn day map beside the photo (Setup: Off or a corner); tap it for the full map |
 | 1.11 | Faint street map behind the day card's dots (CARTO dark tiles, OpenStreetMap fallback), each tile fetched once and kept on the iPad; Setup switch Street map / Plain |
+| 1.12 | Colour map behind the day card (blue water, beige land, roads); Dark map and Plain remain as choices |
